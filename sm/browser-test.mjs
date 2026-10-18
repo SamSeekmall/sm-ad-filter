@@ -34,16 +34,17 @@ async function launch(){
     catch(error) { console.log(await page.locator('body').innerText()); console.log('Page errors',errors); throw error; }
     fixture=await context.newPage();await fixture.goto(`http://localhost:${port}/`);
 }
-const sm=(what,args={})=>page.evaluate(async r=>{const a=await chrome.runtime.sendMessage(r);if(!a?.ok)throw new Error(a?.error||'No reply');return a.data;},{what,...args});
-const upstream=(what,args={})=>page.evaluate(r=>chrome.runtime.sendMessage(r),{what,...args});
+async function bounded(label,fn){let timer;try{return await Promise.race([fn(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(`Timed out: ${label}`)),60000);})]);}finally{clearTimeout(timer);}}
+const sm=(what,args={})=>bounded(what,async()=>{await page.bringToFront();return page.evaluate(async r=>{const a=await chrome.runtime.sendMessage(r);if(!a?.ok)throw new Error(a?.error||'No reply');return a.data;},{what,...args});});
+const upstream=(what,args={})=>bounded(what,async()=>{await page.bringToFront();return page.evaluate(r=>chrome.runtime.sendMessage(r),{what,...args});});
 async function scenario(name,fn){await fn();results.push({name,status:'PASS'});console.log(`PASS ${name}`);}
 async function eventually(fn){let last;for(let i=0;i<30;i++){try{return await fn();}catch(e){last=e;await new Promise(r=>setTimeout(r,150));}}throw last;}
-const request=()=>eventually(()=>fixture.evaluate(async url=>{try{const r=await fetch(url);return {url:r.url,text:await r.text()};}catch{return {blocked:true}}},`http://doubleclick.net:${port}/ad.js?t=${Date.now()}`));
+const request=()=>bounded('fixture request',()=>eventually(async()=>{await fixture.bringToFront();return fixture.evaluate(async url=>{try{const r=await fetch(url,{signal:AbortSignal.timeout(10000)});return {url:r.url,text:await r.text()};}catch(error){if(error.name==='TimeoutError')throw error;return {blocked:true}}},`http://doubleclick.net:${port}/ad.js?t=${Date.now()}`);}));
 const reloadAction=async action=>{
     const before=fixtureLoads;
     await action();
     await eventually(async()=>assert.ok(fixtureLoads>before,'action must request a fresh fixture document'));
-    await fixture.waitForLoadState('domcontentloaded');
+    await fixture.bringToFront();await fixture.waitForLoadState('domcontentloaded');
 };
 try{
     await launch();
@@ -60,7 +61,7 @@ try{
         const blocked=await request();assert.ok(blocked.blocked||blocked.url.startsWith('chrome-extension://'));assert.equal(adRequests,0);
         await reloadAction(()=>sm('sm:pause',{hostname:'localhost',duration:'10m'}));assert.equal((await request()).text,'AD_FIXTURE');
         await reloadAction(()=>sm('sm:resume',{hostname:'localhost'}));const restored=await request();assert.ok(restored.blocked||restored.url.startsWith('chrome-extension://'));
-        await fixture.locator('#sm-qa-search-7c91').fill('normal form still works');await fixture.locator('#form button').click();assert.equal(await fixture.locator('#result').textContent(),'normal form still works');
+        await fixture.bringToFront();await fixture.locator('#sm-qa-search-7c91').fill('normal form still works');await fixture.locator('#form button').click();assert.equal(await fixture.locator('#result').textContent(),'normal form still works');
     });
     await scenario('Alarm restores expired pause',async()=>{
         await reloadAction(()=>sm('sm:pause',{hostname:'localhost',duration:'10m'}));
@@ -69,9 +70,9 @@ try{
     });
     await scenario('Custom element hide, delete and undo',async()=>{
         await fixture.bringToFront();
-        await upstream('addCustomFilters',{hostname:'localhost',selectors:['.sm-qa-hidden-target-7c91']});await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'hidden'});
-        await sm('sm:removeFilter',{hostname:'localhost',selector:'.sm-qa-hidden-target-7c91'});await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'visible'});
-        await sm('sm:undo');await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'hidden'});
+        await upstream('addCustomFilters',{hostname:'localhost',selectors:['.sm-qa-hidden-target-7c91']});await fixture.bringToFront();await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'hidden'});
+        await sm('sm:removeFilter',{hostname:'localhost',selector:'.sm-qa-hidden-target-7c91'});await fixture.bringToFront();await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'visible'});
+        await sm('sm:undo');await fixture.bringToFront();await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'hidden'});
     });
     await scenario('Migration validation, restore readback and undo',async()=>{
         const baseline=await sm('sm:snapshot');const data=structuredClone(baseline);data.settings.filteringModes.none.push('example.com');
@@ -80,7 +81,7 @@ try{
         await sm('sm:undo');assert.equal((await upstream('getFilteringMode',{hostname:'example.com'})),2);
     });
     await scenario('Cookie reject opt-in, off mode and unsafe label',async()=>{
-        await sm('sm:cookieToggle',{enabled:true});await fixture.goto(`http://localhost:${port}/cookie`);await fixture.locator('#onetrust-banner-sdk').waitFor({state:'detached'});
+        await sm('sm:cookieToggle',{enabled:true});await fixture.bringToFront();await fixture.goto(`http://localhost:${port}/cookie`);await fixture.locator('#onetrust-banner-sdk').waitFor({state:'detached'});
         await eventually(async()=>assert.match((await sm('sm:status',{hostname:'localhost'})).cookies.result,/已点击|已消失/));
         await fixture.goto(`http://localhost:${port}/unsafe`);await fixture.waitForTimeout(1200);assert.equal(await fixture.evaluate(()=>window.rejected===true),false);
         await reloadAction(()=>sm('sm:setMode',{hostname:'localhost',level:0}));await fixture.goto(`http://localhost:${port}/cookie-disabled`);await fixture.waitForTimeout(1200);
@@ -115,7 +116,7 @@ try{
 }catch(error){
     let fixtureState;
     try {
-        fixtureState=await fixture.evaluate(()=>({url:location.href,visibility:document.visibilityState,nodes:[...document.querySelectorAll('body,form,input,.sponsor')].map(e=>({tag:e.tagName,id:e.id,display:getComputedStyle(e).display,visibility:getComputedStyle(e).visibility,rect:JSON.stringify(e.getBoundingClientRect())}))}));
+        fixtureState=await fixture.evaluate(()=>({url:location.href,visibility:document.visibilityState,nodes:[...document.querySelectorAll('body,form,input,.sm-qa-hidden-target-7c91')].map(e=>({tag:e.tagName,id:e.id,display:getComputedStyle(e).display,visibility:getComputedStyle(e).visibility,rect:JSON.stringify(e.getBoundingClientRect())}))}));
         await fixture.screenshot({path:path.join(qa,'failure-fixture.png')});
     } catch {}
     await writeFile(path.join(qa,'browser-test.json'),JSON.stringify({status:'FAIL',buildMetadata,results,error:error.stack,fixtureState,pageErrors:errors},null,2));throw error;
