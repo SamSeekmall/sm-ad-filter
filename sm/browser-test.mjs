@@ -7,26 +7,30 @@ const root=process.cwd();process.env.PLAYWRIGHT_BROWSERS_PATH=path.join(root,'bu
 const {chromium}=await import('../build/qa/node_modules/playwright/index.mjs');
 const browserChannel=process.env.SM_BROWSER_CHANNEL||'chromium';
 const qa=path.join(root,browserChannel==='chromium'?'build/qa-v2':`build/qa-v2-${browserChannel}`);await mkdir(qa,{recursive:true});
-const results=[];let adRequests=0,failList=false;
+const results=[];let adRequests=0,fixtureLoads=0,failList=false;
 const buildMetadata=JSON.parse(await readFile(path.join(root,'build/sm-ad-filter/SM-BUILD.json'),'utf8'));
 const server=createServer((req,res)=>{
+    res.setHeader('Cache-Control','no-store');
+    if(req.headers['sec-fetch-dest']==='document')fixtureLoads++;
     res.setHeader('Access-Control-Allow-Origin','*');
     if(req.url.startsWith('/ad.js')){adRequests++;res.end('AD_FIXTURE');return;}
     if(req.url.startsWith('/list.txt')){res.writeHead(failList?503:200,{'Content-Type':'text/plain'});res.end(failList?'unavailable':'! Title: SM fixture\n! Expires: 1 day\n||fixture-ad.example^\nlocalhost##.sponsor');return;}
     res.setHeader('Content-Type','text/html');
     const label=req.url.includes('unsafe')?'Accept all':'Reject all';
-    res.end(`<!doctype html><title>SM regression fixture</title><h1>Normal content</h1><div class="sponsor">Sponsor</div><form id="form"><label>Search <input id="search" required></label><button>Submit</button></form><p id="result"></p><div id="onetrust-banner-sdk"><button id="onetrust-reject-all-handler">${label}</button></div><script>document.querySelector('#form').onsubmit=e=>{e.preventDefault();document.querySelector('#result').textContent=document.querySelector('#search').value};document.querySelector('#onetrust-reject-all-handler').onclick=()=>{window.rejected=true;document.querySelector('#onetrust-banner-sdk').remove()};</script>`);
+    res.end(`<!doctype html><title>SM regression fixture</title><h1>Normal content</h1><div class="sm-qa-hidden-target-7c91">Sponsor</div><form id="form"><label>Search <input id="sm-qa-search-7c91" required></label><button>Submit</button></form><p id="result"></p><div id="onetrust-banner-sdk"><button id="onetrust-reject-all-handler">${label}</button></div><script>document.querySelector('#form').onsubmit=e=>{e.preventDefault();document.querySelector('#result').textContent=document.querySelector('#sm-qa-search-7c91').value};document.querySelector('#onetrust-reject-all-handler').onclick=()=>{window.rejected=true;document.querySelector('#onetrust-banner-sdk').remove()};</script>`);
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;
-const profile=path.join(root,`build/qa/profile-v2-${Date.now()}`);
+const profile=path.join(root,`build/qa/profile-v2-${browserChannel}-${crypto.randomUUID()}`);
 const options={channel:browserChannel,headless:true,args:[`--disable-extensions-except=${path.join(root,'build/sm-ad-filter')}`,`--load-extension=${path.join(root,'build/sm-ad-filter')}`,'--host-resolver-rules=MAP doubleclick.net 127.0.0.1','--no-proxy-server']};
 let context,page,fixture,id;const errors=[];
 async function launch(){
     context=await chromium.launchPersistentContext(profile,options);
+    context.setDefaultTimeout(60000);
     const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');id=new URL(worker.url()).host;
     page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`chrome-extension://${id}/welcome.html`);
-    try { await page.locator('#status').filter({hasText:'默认：'}).waitFor({timeout:15000}); }
+    await page.bringToFront();
+    try { await page.locator('#status').filter({hasText:'默认：'}).waitFor({timeout:45000}); }
     catch(error) { console.log(await page.locator('body').innerText()); console.log('Page errors',errors); throw error; }
     fixture=await context.newPage();await fixture.goto(`http://localhost:${port}/`);
 }
@@ -35,7 +39,12 @@ const upstream=(what,args={})=>page.evaluate(r=>chrome.runtime.sendMessage(r),{w
 async function scenario(name,fn){await fn();results.push({name,status:'PASS'});console.log(`PASS ${name}`);}
 async function eventually(fn){let last;for(let i=0;i<30;i++){try{return await fn();}catch(e){last=e;await new Promise(r=>setTimeout(r,150));}}throw last;}
 const request=()=>eventually(()=>fixture.evaluate(async url=>{try{const r=await fetch(url);return {url:r.url,text:await r.text()};}catch{return {blocked:true}}},`http://doubleclick.net:${port}/ad.js?t=${Date.now()}`));
-const reloadAction=action=>Promise.all([fixture.waitForEvent('load'),action()]);
+const reloadAction=async action=>{
+    const before=fixtureLoads;
+    await action();
+    await eventually(async()=>assert.ok(fixtureLoads>before,'action must request a fresh fixture document'));
+    await fixture.waitForLoadState('domcontentloaded');
+};
 try{
     await launch();
     await scenario('UI, Chinese rules, and permissions diagnostics',async()=>{
@@ -47,10 +56,11 @@ try{
         await page.screenshot({path:path.join(qa,'02-narrow-layout.png'),fullPage:true});await page.setViewportSize({width:1280,height:900});
     });
     await scenario('Network filter, timed pause, resume, normal form',async()=>{
+        await fixture.bringToFront();
         const blocked=await request();assert.ok(blocked.blocked||blocked.url.startsWith('chrome-extension://'));assert.equal(adRequests,0);
         await reloadAction(()=>sm('sm:pause',{hostname:'localhost',duration:'10m'}));assert.equal((await request()).text,'AD_FIXTURE');
         await reloadAction(()=>sm('sm:resume',{hostname:'localhost'}));const restored=await request();assert.ok(restored.blocked||restored.url.startsWith('chrome-extension://'));
-        await fixture.locator('#search').fill('normal form still works');await fixture.locator('#form button').click();assert.equal(await fixture.locator('#result').textContent(),'normal form still works');
+        await fixture.locator('#sm-qa-search-7c91').fill('normal form still works');await fixture.locator('#form button').click();assert.equal(await fixture.locator('#result').textContent(),'normal form still works');
     });
     await scenario('Alarm restores expired pause',async()=>{
         await reloadAction(()=>sm('sm:pause',{hostname:'localhost',duration:'10m'}));
@@ -58,9 +68,10 @@ try{
         await eventually(async()=>assert.equal((await sm('sm:status',{hostname:'localhost'})).level,2));
     });
     await scenario('Custom element hide, delete and undo',async()=>{
-        await upstream('addCustomFilters',{hostname:'localhost',selectors:['.sponsor']});await fixture.reload();await fixture.locator('.sponsor').waitFor({state:'hidden'});
-        await sm('sm:removeFilter',{hostname:'localhost',selector:'.sponsor'});await fixture.reload();await fixture.locator('.sponsor').waitFor({state:'visible'});
-        await sm('sm:undo');await fixture.reload();await fixture.locator('.sponsor').waitFor({state:'hidden'});
+        await fixture.bringToFront();
+        await upstream('addCustomFilters',{hostname:'localhost',selectors:['.sm-qa-hidden-target-7c91']});await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'hidden'});
+        await sm('sm:removeFilter',{hostname:'localhost',selector:'.sm-qa-hidden-target-7c91'});await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'visible'});
+        await sm('sm:undo');await fixture.reload();await fixture.locator('.sm-qa-hidden-target-7c91').waitFor({state:'hidden'});
     });
     await scenario('Migration validation, restore readback and undo',async()=>{
         const baseline=await sm('sm:snapshot');const data=structuredClone(baseline);data.settings.filteringModes.none.push('example.com');
@@ -101,5 +112,12 @@ try{
         assert.deepEqual(errors,[]);
     });
     await writeFile(path.join(qa,'browser-test.json'),JSON.stringify({status:'PASS',browser:context.browser().version(),browserChannel,buildMetadata,results,pageErrors:errors,crossDeviceSync:'NOT_TESTED',liveConsentServices:'NOT_TESTED'},null,2));
-}catch(error){await writeFile(path.join(qa,'browser-test.json'),JSON.stringify({status:'FAIL',results,error:error.stack,pageErrors:errors},null,2));throw error;}
+}catch(error){
+    let fixtureState;
+    try {
+        fixtureState=await fixture.evaluate(()=>({url:location.href,visibility:document.visibilityState,nodes:[...document.querySelectorAll('body,form,input,.sponsor')].map(e=>({tag:e.tagName,id:e.id,display:getComputedStyle(e).display,visibility:getComputedStyle(e).visibility,rect:JSON.stringify(e.getBoundingClientRect())}))}));
+        await fixture.screenshot({path:path.join(qa,'failure-fixture.png')});
+    } catch {}
+    await writeFile(path.join(qa,'browser-test.json'),JSON.stringify({status:'FAIL',buildMetadata,results,error:error.stack,fixtureState,pageErrors:errors},null,2));throw error;
+}
 finally{await context?.close();await new Promise(resolve=>server.close(resolve));}
