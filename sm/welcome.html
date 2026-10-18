@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SM 净览 · 使用指南</title>
+<link rel="stylesheet" href="sm/welcome.css">
+<main>
+  <header><span class="logo" aria-hidden="true">S</span><span>SM 净览 <small>0.1.0 · 本地试用版</small></span></header>
+  <section class="hero"><p class="eyebrow">让网页回归内容</p><h1>少一点广告，<br>多一点专注。</h1><p>基于 uBlock Origin Lite 的 Chrome / Edge 广告过滤工具。过滤在浏览器内执行。</p></section>
+  <section class="panel" aria-labelledby="status-title"><h2 id="status-title">过滤状态</h2><p id="status" role="status" aria-live="polite">正在读取浏览器设置…</p><div class="actions"><button id="enable" disabled>启用中文广告规则</button><a href="dashboard.html" target="_blank" rel="noopener">打开完整设置 ↗</a><button id="refresh" class="secondary">刷新状态</button></div><p class="muted">中文规则设置会保留已启用的其他规则和站点例外。</p></section>
+  <section class="steps"><article><span>01</span><h2>固定到工具栏</h2><p>点击浏览器的扩展图标，将「SM 净览」固定，随时查看当前网站的过滤模式。</p></article><article><span>02</span><h2>调整网站过滤</h2><p>打开扩展面板，可为当前网站选择不过滤、基础、优化或完整过滤。网站显示异常时，先调低该网站的模式并刷新。</p></article><article><span>03</span><h2>隐藏残留内容</h2><p>在面板中使用元素选择工具，选择需要隐藏的区域，预览后创建规则。可通过取消隐藏工具恢复。</p></article></section>
+  <section class="notes"><h2>使用前了解</h2><ul><li>浏览器内部页面、扩展商店等受保护页面无法过滤。</li><li>视频广告及反广告拦截提示的效果随网站变化，不能保证全部消除。</li><li>访问网站权限用于页面过滤；本版本沿用上游权限，不增加账号、遥测或服务器。</li><li>过滤列表更新或手动导入订阅时可能连接列表提供方。本地试用包的程序更新需要重新下载并加载。</li><li>避免同时启用多个广告过滤扩展，以免干扰效果判断。</li></ul></section>
+  <footer>独立修改版，非 uBlock Origin 官方产品。<a href="LICENSE.txt">GPL-3.0 许可</a> · <a href="https://github.com/uBlockOrigin/uBOL-home" target="_blank" rel="noopener noreferrer">上游项目</a><p>原作者 Raymond Hill 及贡献者。修改内容与固定上游版本见随包源码及说明。</p></footer>
+</main>
+<script type="module" src="sm/welcome.js"></script>
+</html>
