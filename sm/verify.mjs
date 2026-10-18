@@ -8,7 +8,7 @@ const json = async file => JSON.parse(await readFile(path.join(root, file), 'utf
 const manifest = await json('manifest.json');
 assert.equal(manifest.manifest_version, 3);
 assert.equal(manifest.name, 'SM 净览');
-const resources = [manifest.background.service_worker, manifest.action.default_popup, manifest.options_page, manifest.storage.managed_schema, ...Object.values(manifest.icons), ...manifest.web_accessible_resources.flatMap(item => item.resources)];
+const resources = [manifest.background.service_worker, manifest.action.default_popup, manifest.options_page, manifest.storage.managed_schema, ...Object.values(manifest.icons), ...manifest.web_accessible_resources.flatMap(item => item.resources), ...(manifest.content_scripts||[]).flatMap(item=>item.js||[]), 'sm/core.mjs','sm/worker.mjs','sm/welcome.js','sm/welcome.css','sm/popup.js','sm/release.json','PRIVACY-SM.md'];
 let totalRules = 0;
 for (const ruleset of manifest.declarative_net_request.rule_resources) {
     resources.push(ruleset.path);
@@ -27,5 +27,5 @@ async function walk(dir) {
     }
 }
 await walk(root);
-execFileSync(process.execPath, ['--check', path.join(root, 'sm/welcome.js')]);
+for (const file of ['sm/welcome.js','sm/popup.js','sm/worker.mjs','sm/core.mjs','sm/cookies.js','js/background.js','js/imported-lists.js','js/offscreen/compile-filters.js']) execFileSync(process.execPath, ['--check', path.join(root, file)]);
 console.log(JSON.stringify({ status: 'PASS', manifestResources: resources.length, jsonFiles: count, rulesets: manifest.declarative_net_request.rule_resources.length, totalRules, browserRuntime: 'NOT_TESTED_BY_THIS_SCRIPT' }, null, 2));

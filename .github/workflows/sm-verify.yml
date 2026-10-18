@@ -1,0 +1,33 @@
+name: SM extension verification
+on:
+  workflow_dispatch:
+  push:
+    paths: ['sm/**', 'chromium/**', '*-SM.md', '.github/workflows/sm-verify.yml']
+  pull_request:
+    paths: ['sm/**', 'chromium/**', '*-SM.md', '.github/workflows/sm-verify.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test sm/welcome.test.mjs sm/worker.test.mjs
+      - run: node sm/build.mjs
+      - run: node sm/verify.mjs
+      - run: npm install --prefix build/qa --no-audit --no-fund playwright@1.64.1
+      - run: node build/qa/node_modules/playwright/cli.js install --with-deps chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/build/qa/browsers
+      - run: node sm/browser-test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sm-extension-and-qa
+          path: |
+            build/sm-ad-filter
+            build/qa-v2

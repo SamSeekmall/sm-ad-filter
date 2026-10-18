@@ -1,31 +1,55 @@
-// Package the pinned, already compiled upstream Chromium extension plus SM UI.
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+// Deterministic overlay on pinned upstream. GPL-3.0-or-later.
+import { cp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'build', 'sm-ad-filter');
-await mkdir(out, { recursive: true });
-await cp(path.join(root, 'chromium'), out, { recursive: true });
-await mkdir(path.join(out, 'sm'), { recursive: true });
-for (const name of ['welcome.css', 'welcome.js']) await cp(path.join(root, 'sm', name), path.join(out, 'sm', name));
-await cp(path.join(root, 'sm', 'welcome.html'), path.join(out, 'welcome.html'));
-const manifest = JSON.parse(await readFile(path.join(out, 'manifest.json'), 'utf8'));
-const upstreamVersion = manifest.version;
-manifest.name = 'SM 净览';
-manifest.short_name = 'SM 净览';
-manifest.description = '基于 uBlock Origin Lite 的独立修改版：广告过滤、跟踪防护、站点例外与中文使用指南。';
-manifest.version_name = `SM 0.1.0 / uBOL ${upstreamVersion}`;
-// Keep the engine version: upstream migration logic compares this value.
-manifest.options_page = 'welcome.html';
-await writeFile(path.join(out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-let popup = await readFile(path.join(out, 'popup.html'), 'utf8');
-popup = popup.replace('</main>', '<p style="text-align:center;font-size:13px"><a href="welcome.html" target="_blank" rel="noopener">SM 净览 · 中文指南</a></p>\n</main>');
-await writeFile(path.join(out, 'popup.html'), popup);
-let localCommit = 'source-archive; see distribution filename and release receipt';
-try { localCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* Archive builds do not require Git. */ }
-const info = { product: 'SM 净览', version: '0.1.0', upstream: 'https://github.com/uBlockOrigin/uBOL-home', upstreamCommit: '009467dd2299791ebb2267b2cc99c1114a4b00f4', upstreamVersion, localCommit, license: 'GPL-3.0', modifications: ['Chinese onboarding and live status', 'Chinese rules opt-in with read-back', 'Independent manifest branding and popup guide link'] };
-await writeFile(path.join(out, 'SM-BUILD.json'), JSON.stringify(info, null, 2) + '\n');
-await cp(path.join(root, 'README-SM.md'), path.join(out, 'README-SM.md'));
-await cp(path.join(root, 'QA-SM.md'), path.join(out, 'QA-SM.md'));
+const release = JSON.parse(await readFile(path.join(root,'sm/release.json'),'utf8'));
+await mkdir(out,{recursive:true});
+await cp(path.join(root,'chromium'),out,{recursive:true});
+await mkdir(path.join(out,'sm'),{recursive:true});
+for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','cookies.js','popup.html','popup.js','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+await cp(path.join(root,'sm/welcome.html'),path.join(out,'welcome.html'));
+const manifest = JSON.parse(await readFile(path.join(out,'manifest.json'),'utf8'));
+if (manifest.version !== release.engineVersion) throw new Error('Upstream changed: review migration');
+Object.assign(manifest,{name:'SM 净览',short_name:'SM 净览',version:release.extensionVersion,version_name:`SM ${release.productVersion} / uBOL ${release.engineVersion}`,description:'广告过滤、网站排障、临时暂停、规则恢复与可选配置同步。基于 uBlock Origin Lite 的独立修改版。',options_page:'welcome.html'});
+manifest.action.default_popup = 'sm/popup.html';
+manifest.optional_permissions = [...new Set([...(manifest.optional_permissions || []),'declarativeNetRequestFeedback'])];
+manifest.content_scripts = [...(manifest.content_scripts || []),{matches:['http://*/*','https://*/*'],js:['sm/cookies.js'],run_at:'document_idle'}];
+await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+async function patch(file,needle,replacement) {
+    const target = path.join(out,file); const text = (await readFile(target,'utf8')).replaceAll('\r\n','\n');
+    if (!text.includes(needle)) throw new Error(`Upstream changed: ${file}`);
+    await writeFile(target,text.replace(needle,replacement));
+}
+await patch('js/background.js',"return runtime.getManifest().version;",`return '${release.engineVersion}'; // SM engine migration version`);
+await patch('js/background.js',"runtime.onMessage.addListener((request, sender, callback) => {",`const smController = createController(onMessage, isFullyInitialized, smRulesFromText);\nruntime.onMessage.addListener((request, sender, callback) => {`);
+await patch('js/background.js',"onMessage(request, sender).then(callback);","smController.wrap(request, sender).then(callback, error => callback({ smError: error.message }));");
+await patch('js/background.js',"import { deferredTasks }", "import { createController } from '../sm/worker.mjs';\nimport { rulesFromText as smRulesFromText } from './dnr-parser.js';\nimport { deferredTasks }");
+await patch('js/backup-restore.js','manifest.versionName ?? manifest.version','manifest.version_name ?? manifest.version');
+await patch('popup.html','</main>','<p style="text-align:center"><a href="welcome.html" target="_blank" rel="noopener">SM 净览 · 控制中心</a></p></main>');
+await patch('js/imported-lists.js','export async function updateImportedLists() {','export async function updateImportedLists(force = false) {');
+await patch('js/imported-lists.js','if ( updateTime > now ) { continue; }','if ( !force && updateTime > now ) { continue; }');
+await patch('js/background.js','const count = await updateImportedLists();','const count = await updateImportedLists(request.force === true);');
+await patch('js/imported-lists.js',"serialized: await localRead(`rulesets.imported.compiled.${listid}`),","serialized: await localRead(`rulesets.imported.compiled.${listid}`),\n        stale: (await getImportedLists()).find(x => x.id === listid)?.smRefresh === true,");
+await patch('js/imported-lists.js',"await localRemove(toUpdate.map(a => `rulesets.imported.compiled.${a}`));","const all = await getImportedLists();\n    for (const list of all) { if (toUpdate.includes(list.id)) list.smRefresh = true; }\n    await saveImportedLists(all);");
+await patch('js/imported-lists.js',"    } else {\n        await localRemove(`rulesets.imported.compiled.${listid}`);\n    }","    } // SM retains last known good compiled list on failure");
+await patch('js/imported-lists.js',"    list.time.updated = Date.now();","    list.smAttemptedAt = Date.now();\n    list.smRefresh = false;\n    if (details.compiled) { list.smSuccessAt = Date.now(); list.smError = ''; list.time.updated = Date.now(); }\n    else { list.smError = details.error || '下载或编译失败，保留上次成功规则'; list.time.updated = Date.now(); } // scheduler time; success recorded separately");
+await patch('js/offscreen/compile-filters.js',"    if ( Boolean(text) === false ) { return; }\n\n    const metadata", "    if ( Boolean(text) === false ) { await browser.runtime.sendMessage({ what: 'compileFilters:updateImportedListData', listid: list.id, error: '订阅下载失败或返回空内容' }); return; }\n\n    const metadata");
+await patch('js/offscreen/compile-filters.js',"    if ( Boolean(compiled) === false ) { return; }","    if ( Boolean(compiled) === false ) { await browser.runtime.sendMessage({ what: 'compileFilters:updateImportedListData', listid: list.id, error: '订阅编译失败' }); return; }");
+await patch('js/offscreen/compile-filters.js',"    if ( Boolean(result?.serialized) === false ) {", "    if (result?.stale) { const fresh = await updateList(list); if (fresh) return fresh; }\n    if ( Boolean(result?.serialized) === false ) {");
+for (const dir of await readdir(path.join(out,'_locales'))) {
+    const file = path.join(out,'_locales',dir,'messages.json');
+    const strings = JSON.parse(await readFile(file,'utf8'));
+    for (const value of Object.values(strings)) if (typeof value.message === 'string') value.message = value.message.replaceAll('uBlock Origin Lite','SM 净览').replaceAll('uBO Lite','SM 净览');
+    if (strings.supportS3P1) strings.supportS3P1.message = 'SM 净览：请使用工具栏的“反馈问题”，生成脱敏报告并提交到已配置的 SM 仓库。';
+    await writeFile(file,JSON.stringify(strings,null,2)+'\n');
+}
+await writeFile(path.join(out,'report.html'),'<!doctype html><meta charset="utf-8"><title>SM 净览反馈</title><a href="welcome.html#feedback">打开 SM 净览反馈中心</a><script type="module" src="sm/report-redirect.js"></script>');
+await writeFile(path.join(out,'sm/report-redirect.js'),"location.replace(chrome.runtime.getURL('welcome.html#feedback'));\n");
+let localCommit = 'source-archive';
+try { localCommit = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); } catch { }
+await writeFile(path.join(out,'SM-BUILD.json'),JSON.stringify({...release,localCommit,license:'GPL-3.0-or-later',upstream:'https://github.com/uBlockOrigin/uBOL-home',modifications:'sm/ overlay; engine version separation; imported-list refresh recovery; localized branding and owned feedback'},null,2)+'\n');
+for (const file of ['README-SM.md','QA-SM.md','PRIVACY-SM.md','RELEASE-SM.md','FEATURES-SM.md']) await cp(path.join(root,file),path.join(out,file));
 console.log(out);
