@@ -9,7 +9,18 @@ const release = JSON.parse(await readFile(path.join(root,'sm/release.json'),'utf
 await mkdir(out,{recursive:true});
 await cp(path.join(root,'chromium'),out,{recursive:true});
 await mkdir(path.join(out,'sm'),{recursive:true});
-for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','cookies.js','popup.html','popup.js','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+// Inline only local styles and official Tabler icon nodes: no blocking stylesheet/icon requests.
+const iconNodes = JSON.parse(await readFile(path.join(root,'sm/icons/tabler.json'),'utf8'));
+let popup = await readFile(path.join(root,'sm/popup.html'),'utf8');
+popup = popup.replace('<link rel="stylesheet" href="popup.css">',`<style>${await readFile(path.join(root,'sm/popup.css'),'utf8')}</style>`);
+popup = popup.replace(/\{\{([a-z-]+)\}\}/g,(_,name)=>{
+    if(!iconNodes[name])throw Error(`Missing icon ${name}`);
+    const nodes=iconNodes[name].map(([tag,attrs])=>`<${tag} ${Object.entries(attrs).map(([k,v])=>`${k}="${v}"`).join(' ')}/>`).join('');
+    return `<svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${name.endsWith('-filled')?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${nodes}</svg>`;
+});
+await writeFile(path.join(out,'sm/popup.html'),popup);
+await cp(path.join(root,'sm/icons/LICENSE.txt'),path.join(out,'sm/TABLER-LICENSE.txt'));
 await cp(path.join(root,'sm/welcome.html'),path.join(out,'welcome.html'));
 const manifest = JSON.parse(await readFile(path.join(out,'manifest.json'),'utf8'));
 if (manifest.version !== release.engineVersion) throw new Error('Upstream changed: review migration');

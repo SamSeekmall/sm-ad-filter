@@ -150,10 +150,20 @@ export function createController(engine, ready, parseDnr) {
             hasAccess,userScripts,pauses:local['sm.pauses']??{}, cookieReject:local['sm.cookieReject']??false, cookies:host ? (local['sm.cookies']??{})[host] : null,
             release:await (releasePromise ??= fetch(api.runtime.getURL('sm/release.json')).then(r=>r.json()).catch(e=>{releasePromise=null;throw e;})), repository:local['sm.repository']??'', syncEnabled:local['sm.syncEnabled']??false, startError:local['sm.startError']??'' };
     }
+    // Popup reads only its current site, not the dashboard's rule catalog or user scripts.
+    async function popupStatus(request) {
+        const tab=Number.isInteger(request.tabId)?await api.tabs.get(request.tabId).catch(()=>null):null;
+        let host='';
+        if(tab?.url && /^https?:/.test(tab.url) && !/^https:\/\/(chromewebstore\.google\.com\/|chrome\.google\.com\/webstore|microsoftedge\.microsoft\.com\/addons)/.test(tab.url))host=hostname(tab.url);
+        if(!host)return {hostname:'',level:0,pauses:{},hasAccess:false};
+        const [level,pauses,hasAccess]=await Promise.all([engine({what:'getFilteringMode',hostname:host}),read('sm.pauses',{}),api.permissions.contains({origins:[`*://${host}/*`]})]);
+        return {hostname:host,level,pauses:pauses[host]?{[host]:pauses[host]}:{},hasAccess};
+    }
     async function handle(r) {
         const host = r.hostname ? hostname(r.hostname) : '';
         switch(r.what) {
         case 'sm:status': return getStatus(r);
+        case 'sm:popupStatus': return popupStatus(r);
         case 'sm:snapshot': return snapshot();
         case 'sm:preview': { const data = await validate(r.data); return {data,summary:backupSummary(data),baseRevision:await fingerprint()}; }
         case 'sm:restore': {
@@ -280,7 +290,7 @@ export function createController(engine, ready, parseDnr) {
             }).then(data => reply({ok:true,data}),error => reply({ok:false,error:error.message}));
             return true;
         }
-        const direct = ['sm:status','sm:lists','sm:history','sm:updateLists','sm:updateProgress','sm:cancelUpdate','sm:stats'].includes(r.what);
+        const direct = ['sm:popupStatus','sm:status','sm:lists','sm:history','sm:updateLists','sm:updateProgress','sm:cancelUpdate','sm:stats'].includes(r.what);
         (direct ? initialized.then(()=>handle(r)) : serial(() => handle(r))).then(data => reply({ok:true,data}),error => reply({ok:false,error:error.message}));
         return true;
     });

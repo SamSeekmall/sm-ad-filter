@@ -83,3 +83,14 @@ test('history migrates once and metadata does not contain full snapshots',async(
     assert.ok(store['sm.historyIndex'][0].bytes>0);
     await send({what:'sm:undo'});assert.equal(store['sm.history.legacy'],undefined);
 });
+
+test('popup status uses site-only data and rejects protected tabs',async()=>{
+    chrome.tabs.get=async()=>({id:1,url:'https://example.com/path?q=private'});
+    chrome.permissions={contains:async()=>true};
+    const result=await send({what:'sm:popupStatus',tabId:1});
+    assert.equal(result.ok,true);assert.equal(result.data.hostname,'example.com');
+    assert.equal(result.data.level,2);assert.equal(result.data.hasAccess,true);
+    assert.deepEqual(Object.keys(result.data).sort(),['hasAccess','hostname','level','pauses']);
+    chrome.tabs.get=async()=>({id:1,url:'https://chromewebstore.google.com/detail/test'});
+    assert.equal((await send({what:'sm:popupStatus',tabId:1})).data.hostname,'');
+});
