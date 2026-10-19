@@ -20,6 +20,11 @@ try {
         $native = Get-Content "build/qa-native-$channel/native-popup.json" -Raw | ConvertFrom-Json
         if ($native.status -ne 'PASS' -or $native.build.localCommit -ne $commit) { throw "Missing native popup verification: $channel" }
     }
+    foreach ($channel in @('chromium','msedge')) {
+        $timing = Get-Content "build/qa-popup-performance-$channel/native-timing.json" -Raw | ConvertFrom-Json
+        $currentRun = $timing.runs | Where-Object label -eq 'current'
+        if ($timing.status -ne 'COMPLETE' -or $currentRun.build.localCommit -ne $commit) { throw "Missing popup timing verification: $channel" }
+    }
     if (Test-Path -LiteralPath $OutputDirectory) { throw 'Output directory already exists; preserve the previous release.' }
     New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
     $output = (Resolve-Path -LiteralPath $OutputDirectory).Path
@@ -28,7 +33,7 @@ try {
     Compress-Archive -Path build/sm-ad-filter/* -DestinationPath $extensionZip
     git archive --format=zip --output=$sourceZip HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
-    Copy-Item design-qa.md,README-SM.md,QA-SM.md,PRIVACY-SM.md,RELEASE-SM.md,FEATURES-SM.md -Destination $output
+    Copy-Item PERFORMANCE-REVIEW-042.md,design-qa.md,README-SM.md,QA-SM.md,PRIVACY-SM.md,RELEASE-SM.md,FEATURES-SM.md -Destination $output
     Copy-Item build/qa-v2/browser-test.json -Destination $output
     Copy-Item build/qa-v2-msedge/browser-test.json -Destination (Join-Path $output 'edge-browser-test.json')
     Copy-Item build/qa-v2/live/results.json -Destination (Join-Path $output 'historical-0.2-live-results.json')
@@ -39,7 +44,8 @@ try {
         Copy-Item "build/qa-native-$channel/native-popup.json" -Destination (Join-Path $output "native-popup-$channel.json")
         Copy-Item "build/qa-native-$channel/native-popup.png" -Destination (Join-Path $output "native-popup-$channel.png")
     }
+    foreach ($channel in @('chromium','msedge')) { Copy-Item "build/qa-popup-performance-$channel/native-timing.json" -Destination (Join-Path $output "popup-timing-$channel.json") }
     $hashes = @($extensionZip,$sourceZip) | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path
-    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion='0.4.0 / f0a05f3';hashes=$hashes;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
+    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion='0.4.1 / dfa9970';hashes=$hashes;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
     Get-ChildItem -LiteralPath $output | Select-Object Name,Length
 } finally { Pop-Location }

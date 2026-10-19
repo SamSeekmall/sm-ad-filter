@@ -152,12 +152,12 @@ export function createController(engine, ready, parseDnr) {
     }
     // Popup reads only its current site, not the dashboard's rule catalog or user scripts.
     async function popupStatus(request) {
-        const tab=Number.isInteger(request.tabId)?await api.tabs.get(request.tabId).catch(()=>null):null;
+        const tab=Number.isInteger(request.tabId)?await api.tabs.get(request.tabId).catch(()=>null):(await api.tabs.query({active:true,currentWindow:true}))[0];
         let host='';
         if(tab?.url && /^https?:/.test(tab.url) && !/^https:\/\/(chromewebstore\.google\.com\/|chrome\.google\.com\/webstore|microsoftedge\.microsoft\.com\/addons)/.test(tab.url))host=hostname(tab.url);
         if(!host)return {hostname:'',level:0,pauses:{},hasAccess:false};
         const [level,pauses,hasAccess]=await Promise.all([engine({what:'getFilteringMode',hostname:host}),read('sm.pauses',{}),api.permissions.contains({origins:[`*://${host}/*`]})]);
-        return {hostname:host,level,pauses:pauses[host]?{[host]:pauses[host]}:{},hasAccess};
+        return {hostname:host,tabId:tab.id,level,pauses:pauses[host]?{[host]:pauses[host]}:{},hasAccess};
     }
     async function handle(r) {
         const host = r.hostname ? hostname(r.hostname) : '';

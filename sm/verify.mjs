@@ -27,5 +27,5 @@ async function walk(dir) {
     }
 }
 await walk(root);
-for (const file of ['sm/welcome.js','sm/popup.js','sm/worker.mjs','sm/core.mjs','sm/cookies.js','js/background.js','js/imported-lists.js','js/offscreen/compile-filters.js','js/offscreen/fetch-list.js','sm/updates.mjs']) execFileSync(process.execPath, ['--check', path.join(root, file)]);
+for (const file of ['sm/welcome.js','sm/popup.js','sm/worker.mjs','sm/core.mjs','sm/cookies.js','js/background.js','js/background.bundle.js','js/imported-lists.js','js/offscreen/compile-filters.js','js/offscreen/fetch-list.js','sm/updates.mjs']) execFileSync(process.execPath, ['--check', path.join(root, file)]);
 console.log(JSON.stringify({ status: 'PASS', manifestResources: resources.length, jsonFiles: count, rulesets: manifest.declarative_net_request.rule_resources.length, totalRules, browserRuntime: 'NOT_TESTED_BY_THIS_SCRIPT' }, null, 2));

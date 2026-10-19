@@ -11,8 +11,7 @@ function paint(){const valid=Boolean(state.hostname),paused=Boolean(state.pauses
  $('#permission').textContent=state.hasAccess?'网站访问权限可用':'网站访问权限不足，请到扩展详情中调整。';
  const query=valid?'?site='+encodeURIComponent(state.hostname):'';$('#center').href='../welcome.html'+query;$('#settings').href='../welcome.html'+query;$('#feedback').href='../welcome.html'+query+'#feedback';enabled();performance.mark('sm-popup-ready');document.documentElement.dataset.ready='true';}
 async function load(){const ticket=++sequence;document.documentElement.dataset.ready="false";state=null;enabled();let slow=setTimeout(()=>{if(ticket===sequence)showStatus('正在唤醒过滤引擎…','loading');},1500);
- try{[tab]=await chrome.tabs.query({active:true,currentWindow:true});if(tab?.url&&/^https?:/.test(tab.url)){$('#host').textContent=new URL(tab.url).hostname;performance.mark('sm-popup-host');}
- const value=await send('sm:popupStatus',{tabId:tab?.id});if(ticket!==sequence)return;state=value;paint();}
+ try{const value=await send('sm:popupStatus');if(ticket!==sequence)return;tab={id:value.tabId};state=value;if(!busy){$('#actionStatus').hidden=true;$('#actionStatus').replaceChildren();}paint();}
  catch(e){if(ticket!==sequence)return;showStatus('保护状态暂未确认','unavailable');$('#actionStatus').hidden=false;$('#actionStatus').dataset.error='true';$('#actionStatus').textContent=e.message;const retry=document.createElement('button');retry.textContent='重新读取';retry.onclick=()=>{retry.remove();load();};$('#actionStatus').append(' ',retry);}
  finally{clearTimeout(slow);}}
 async function act(what,args){if(!state?.hostname||busy)return;busy=true;enabled();$('#actionStatus').hidden=false;$('#actionStatus').dataset.error='false';$('#actionStatus').textContent='正在应用，请稍候…';

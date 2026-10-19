@@ -90,7 +90,9 @@ test('popup status uses site-only data and rejects protected tabs',async()=>{
     const result=await send({what:'sm:popupStatus',tabId:1});
     assert.equal(result.ok,true);assert.equal(result.data.hostname,'example.com');
     assert.equal(result.data.level,2);assert.equal(result.data.hasAccess,true);
-    assert.deepEqual(Object.keys(result.data).sort(),['hasAccess','hostname','level','pauses']);
+    assert.deepEqual(Object.keys(result.data).sort(),['hasAccess','hostname','level','pauses','tabId']);
     chrome.tabs.get=async()=>({id:1,url:'https://chromewebstore.google.com/detail/test'});
     assert.equal((await send({what:'sm:popupStatus',tabId:1})).data.hostname,'');
 });
+
+test('popup resolves active tab once without UI round trip',async()=>{let queries=0;chrome.tabs.query=async options=>{queries++;assert.deepEqual(options,{active:true,currentWindow:true});return[{id:42,url:'https://example.com/'}];};const r=await send({what:'sm:popupStatus'});assert.equal(r.ok,true);assert.equal(r.data.tabId,42);assert.equal(r.data.hostname,'example.com');assert.equal(queries,1);chrome.tabs.query=async()=>[];assert.equal((await send({what:'sm:popupStatus'})).data.hostname,'');});

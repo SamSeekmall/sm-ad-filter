@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'build', 'sm-ad-filter');
+const {build:bundle} = await import('./build-tools/node_modules/esbuild/lib/main.js');
 const release = JSON.parse(await readFile(path.join(root,'sm/release.json'),'utf8'));
 await mkdir(out,{recursive:true});
 await cp(path.join(root,'chromium'),out,{recursive:true});
@@ -13,6 +14,7 @@ for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.
 // Inline only local styles and official Tabler icon nodes: no blocking stylesheet/icon requests.
 const iconNodes = JSON.parse(await readFile(path.join(root,'sm/icons/tabler.json'),'utf8'));
 let popup = await readFile(path.join(root,'sm/popup.html'),'utf8');
+popup = popup.replace('src="brand.png"',`src="data:image/png;base64,${(await readFile(path.join(root,'sm/brand.png'))).toString('base64')}"`);
 popup = popup.replace('<link rel="stylesheet" href="popup.css">',`<style>${await readFile(path.join(root,'sm/popup.css'),'utf8')}</style>`);
 popup = popup.replace(/\{\{([a-z-]+)\}\}/g,(_,name)=>{
     if(!iconNodes[name])throw Error(`Missing icon ${name}`);
@@ -66,6 +68,12 @@ for (const dir of await readdir(path.join(out,'_locales'))) {
 }
 await writeFile(path.join(out,'report.html'),'<!doctype html><meta charset="utf-8"><title>SM 净览反馈</title><a href="welcome.html#feedback">打开 SM 净览反馈中心</a><script type="module" src="sm/report-redirect.js"></script>');
 await writeFile(path.join(out,'sm/report-redirect.js'),"location.replace(chrome.runtime.getURL('welcome.html#feedback'));\n");
+// Resolve the worker graph at build time, not on each service-worker startup.
+const bundled=await bundle({entryPoints:[path.join(out,'js/background.js')],outfile:path.join(out,'js/background.bundle.js'),bundle:true,format:'esm',platform:'browser',target:'chrome120',minify:false,legalComments:'inline',metafile:true});
+if(Object.values(bundled.metafile.outputs).some(x=>x.imports.length))throw Error('Worker bundle has unresolved imports');
+manifest.background.service_worker='js/background.bundle.js';
+await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+await writeFile(path.join(out,'sm/BUNDLE.json'),JSON.stringify({tool:'esbuild 0.25.12',inputModules:Object.keys(bundled.metafile.inputs).length,outputs:bundled.metafile.outputs},null,2));
 let localCommit = 'source-archive';
 try { localCommit = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); } catch { }
 await writeFile(path.join(out,'SM-BUILD.json'),JSON.stringify({...release,localCommit,license:'GPL-3.0-or-later',upstream:'https://github.com/uBlockOrigin/uBOL-home',modifications:'sm/ overlay; engine version separation; imported-list refresh recovery; localized branding and owned feedback'},null,2)+'\n');
