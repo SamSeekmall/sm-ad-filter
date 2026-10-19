@@ -312,3 +312,17 @@ test('clearing local records also clears the operation log and notices',async()=
     assert.equal((await send({what:'sm:clearRecords'})).ok,true);
     assert.equal('sm.ops' in store,false);assert.equal('sm.notice' in store,false);
 });
+
+test('pause records the mode it returns to and supports a 1-hour duration',async()=>{
+    await resetWorld();
+    modes.complete=['long.example.com'];
+    const before=Date.now();
+    const paused=await send({what:'sm:pause',hostname:'long.example.com',duration:'1h'});assert.equal(paused.ok,true);
+    const record=store['sm.pauses']['long.example.com'];
+    assert.equal(record.level,2,'level before the pause (mock engine reports 2) is kept for the popup');
+    assert.ok(record.until>=before+3600000-1000&&record.until<=Date.now()+3600000+1000,'deadline one hour out');
+    assert.equal(alarms.get('sm:pause:long.example.com').when,record.until);
+    const status=await send({what:'sm:popupStatus',tabId:undefined});assert.equal(status.ok,true);
+    assert.equal((await send({what:'sm:pause',hostname:'long.example.com',duration:'2h'})).ok,false,'unknown durations are refused');
+    await send({what:'sm:resume',hostname:'long.example.com'});assert.deepEqual(modes.complete,['long.example.com']);
+});

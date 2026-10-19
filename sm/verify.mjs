@@ -9,7 +9,7 @@ const json = async file => JSON.parse(await readFile(path.join(root, file), 'utf
 const manifest = await json('manifest.json');
 assert.equal(manifest.manifest_version, 3);
 assert.equal(manifest.name, 'SM 净览');
-const resources = [manifest.background.service_worker, manifest.action.default_popup, manifest.options_page, manifest.storage.managed_schema, ...Object.values(manifest.icons), ...manifest.web_accessible_resources.flatMap(item => item.resources), ...(manifest.content_scripts||[]).flatMap(item=>item.js||[]), 'sm/core.mjs','sm/updates.mjs','sm/worker.mjs','sm/timing.mjs','sm/ops.mjs','sm/history.mjs','sm/pauses.mjs','sm/config.mjs','SM-FILES.json','SM-BUILD.json','sm/welcome.js','sm/welcome.css','sm/popup.js','sm/popup.css','sm/brand.png','sm/TABLER-LICENSE.txt','sm/release.json','PRIVACY-SM.md'];
+const resources = [manifest.background.service_worker, manifest.action.default_popup, manifest.options_page, manifest.storage.managed_schema, ...Object.values(manifest.icons), ...manifest.web_accessible_resources.flatMap(item => item.resources), ...(manifest.content_scripts||[]).flatMap(item=>item.js||[]), 'sm/core.mjs','sm/updates.mjs','sm/worker.mjs','sm/timing.mjs','sm/ops.mjs','sm/history.mjs','sm/pauses.mjs','sm/config.mjs','SM-FILES.json','SM-BUILD.json','sm/welcome.js','sm/welcome.css','sm/popup.js','sm/popup.css','sm/tokens.css','sm/mark.svg','sm/brand.png','sm/TABLER-LICENSE.txt','sm/release.json','PRIVACY-SM.md'];
 let totalRules = 0;
 for (const ruleset of manifest.declarative_net_request.rule_resources) {
     resources.push(ruleset.path);
@@ -50,3 +50,10 @@ const build = await json('SM-BUILD.json');
 assert.ok(build.upstreamSeams.length >= 20 && build.upstreamSeams.every(x => x.matches >= 1), 'upstream seam contract recorded');
 assert.match(build.toolchain.esbuild, /^\d+\.\d+\.\d+$/);
 console.log(JSON.stringify({ status: 'PASS', packageFiles: Object.keys(listed).length + 1, toolchain: build.toolchain, upstreamSeams: build.upstreamSeams.length, manifestResources: resources.length, jsonFiles: count, rulesets: manifest.declarative_net_request.rule_resources.length, totalRules, browserRuntime: 'NOT_TESTED_BY_THIS_SCRIPT' }, null, 2));
+// SM brand, not the upstream shield: every toolbar/extension icon must be the SM mark rendered in sm/brand/.
+for (const size of [16, 32, 64, 128]) for (const suffix of ['', '_off']) {
+    const name = `icon_${size}${suffix}.png`;
+    const shipped = createHash('sha256').update(await readFile(path.join(root, 'img', name))).digest('hex');
+    const source = createHash('sha256').update(await readFile(path.join(root, '..', '..', 'sm', 'brand', name))).digest('hex');
+    assert.equal(shipped, source, `toolbar icon is not the SM mark: ${name}`);
+}

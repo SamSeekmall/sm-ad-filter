@@ -1,8 +1,9 @@
 {
-  "productVersion": "0.4.3",
-  "extensionVersion": "2026.1019.8",
+  "productVersion": "0.4.4",
+  "extensionVersion": "2026.1019.9",
   "engineVersion": "2026.1012.1545",
   "upstreamCommit": "009467dd2299791ebb2267b2cc99c1114a4b00f4",
   "repository": "",
+  "supportContact": "",
   "channel": "local-trial"
 }

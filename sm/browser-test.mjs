@@ -145,8 +145,7 @@ try{
         await page.locator('#start').waitFor({state:'visible'});assert.match(await page.locator('#startChecks').innerText(),/网站访问权限：可用/);
         await page.locator('#startDone').click();await page.locator('#start').waitFor({state:'hidden'});
         await page.locator('#site').fill('localhost');await page.locator('#site').press('Enter');await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();
-        await page.locator('#wizard summary').click();
-        await page.locator('#wizStart').click();await page.locator('#wizFixed').waitFor();
+                await page.locator('#wizStart').click();await page.locator('#wizFixed').waitFor();
         assert.ok((await sm('sm:status',{hostname:'localhost'})).pauses.localhost,'wizard step 1 paused the site');
         await page.locator('#wizFixed').click();await page.locator('#wizLower').click();await page.locator('#wizDone').waitFor();
         assert.equal(await upstream('getFilteringMode',{hostname:'localhost'}),1,'wizard lowered one level');

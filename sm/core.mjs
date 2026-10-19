@@ -1,5 +1,8 @@
 // SM 净览 modifications. GPL-3.0-or-later.
-export const modeNames = ['不过滤', '基础过滤', '优化过滤', '完整过滤'];
+// One vocabulary everywhere (popup, control center, upstream zh_CN strings patched by build.mjs).
+export const modeNames = ['不过滤', '轻度过滤', '标准过滤', '强力过滤'];
+export const modeShort = ['不过滤', '轻度', '标准', '强力'];
+export const durationNames = { '10m': '10 分钟', '1h': '1 小时', session: '到关闭浏览器' };
 export const modeKeys = ['none', 'basic', 'optimal', 'complete'];
 export function hostname(value) {
     if (typeof value !== 'string' || value.length > 253) throw new Error('网站地址无效');

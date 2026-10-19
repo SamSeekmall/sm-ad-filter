@@ -1,6 +1,6 @@
-import { modeNames, hostname, reportText, backupSummary } from './core.mjs';
+import { modeNames, durationNames, hostname, reportText } from './core.mjs';
 const $ = selector => document.querySelector(selector);
-let current, pending, pendingBase, cloudRevision = null, cloudRead = false, filters = [];
+let current, pending, pendingBase, cloudRevision = null, cloudRead = false, filters = [], historyCount = 0, listCount = 0;
 const mutating = new Set(['sm:restore','sm:setMode','sm:pause','sm:resume','sm:preset','sm:undo','sm:removeFilter','sm:cookieToggle','sm:setUserDnrRules','sm:clearRecords']);
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function ask(what, data, limit) {
@@ -27,7 +27,17 @@ async function send(what, data={}) {
     return result.data;
 }
 const date = time => time ? new Date(time).toLocaleString() : '尚无成功记录';
+const RECOMMENDED = ['chn-0','easylist','easyprivacy'];
+const pauseText = p => p.until ? `${new Date(p.until).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} 自动恢复` : '关闭浏览器后恢复';
 function list(target, lines) { target.replaceChildren(...lines.map(text => {const li=document.createElement('li');li.textContent=text;return li;})); }
+function empty(target, text) { const li=document.createElement('li');li.className='empty';li.textContent=text;target.replaceChildren(li); }
+// Destructive actions: the first click arms the button, a second click within 5 s confirms (no browser dialog).
+function armed(button, label) {
+    if (button.dataset.armed === '1') { delete button.dataset.armed; button.classList.remove('confirming'); button.textContent = button.dataset.label; return true; }
+    button.dataset.label = button.textContent; button.dataset.armed = '1'; button.classList.add('confirming'); button.textContent = label;
+    setTimeout(() => { if (button.dataset.armed === '1') { delete button.dataset.armed; button.classList.remove('confirming'); button.textContent = button.dataset.label; } }, 5000);
+    return false;
+}
 function download(name, data, type='application/json') {
     const url=URL.createObjectURL(new Blob([typeof data==='string'?data:JSON.stringify(data,null,2)],{type}));
     const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
@@ -36,27 +46,31 @@ function actionState() {
     if(!current)return;
     let selected=false;try{selected=host()===current.hostname;}catch{}
     const valid=Boolean(current.hostname)&&selected, paused=Boolean(current.pauses[current.hostname]);
-    for(const id of ['mode','setMode','pause10','pauseSession','resume'])$('#'+id).disabled=!valid;
+    for(const id of ['mode','setMode','pause10','pause1h','pauseSession','resume'])$('#'+id).disabled=!valid;
     $('#resume').hidden=!paused;$('#resume').disabled=!valid||!paused;
-    $('#pause10').hidden=$('#pauseSession').hidden=paused;
-    $('#setMode').disabled=!valid||Number($('#mode').value)===current.level;
-    $('#recommended').disabled=['chn-0','easylist','easyprivacy'].every(id=>current.enabledRulesets.includes(id));
-    $('#recommended').textContent=$('#recommended').disabled?'推荐规则已启用':'启用推荐规则';
-    $('#sendReport').disabled=!(current.repository||current.release.repository)||!$('#report').value;
+    $('#pause10').hidden=$('#pause1h').hidden=$('#pauseSession').hidden=paused;
+    $('#mode').disabled=!valid||paused;
+    $('#setMode').disabled=!valid||paused||Number($('#mode').value)===current.level;
+    // One entry for the recommended rules: shown only while something is missing.
+    const rulesOn=RECOMMENDED.every(id=>current.enabledRulesets.includes(id));
+    $('#recommended').disabled=rulesOn;$('#recommendedRow').hidden=rulesOn;
+    $('#sendReport').hidden=!current.release.repository;$('#sendReport').disabled=!$('#report').value;
     $('#copyReport').disabled=$('#downloadReport').disabled=!$('#report').value;
+    $('#undo').disabled=historyCount===0;
+    $('#updateLists').disabled=listCount===0;
+    $('#syncActions').hidden=!$('#syncEnabled').checked;$('#syncWrite').disabled=!cloudRead;
 }
 async function run(button, fn) {
     const scope=button.closest('.panel')||button.parentElement;
     let note=scope.querySelector('.actionStatus');
     if(!note){note=document.createElement('p');note.className='actionStatus';note.setAttribute('role','status');note.setAttribute('aria-live','polite');}
     const anchor=button.closest('.actions')||button;
-    if(button.id==='saveRepository')$('#repository').removeAttribute('aria-invalid');
     anchor.after(note);note.hidden=false;note.id=`status-${button.id||'action'}`;button.setAttribute('aria-describedby',note.id);
     button.disabled=true;button.setAttribute('aria-busy','true');note.dataset.state='loading';note.textContent='正在处理…';
-    try { await fn(); note.dataset.state='success';note.textContent='操作完成。';if(button.id==='refresh'||button.id==='checkSite')note.hidden=true; }
+    try { if(await fn()==='armed'){note.hidden=true;return;} note.dataset.state='success';note.textContent='操作完成。';if(button.id==='refresh'||button.id==='checkSite')note.hidden=true; }
     catch(error) {
         note.dataset.state='error';note.textContent=`未完成：${error.message}`;
-        const field=button.id==='saveRepository'?$('#repository'):['checkSite','setMode','pause10','pauseSession'].includes(button.id)?$('#site'):null;
+        const field=['checkSite','setMode','pause10','pause1h','pauseSession'].includes(button.id)?$('#site'):null;
         if(field){field.setAttribute('aria-invalid','true');field.setAttribute('aria-describedby',note.id);field.focus();field.oninput=()=>field.removeAttribute('aria-invalid');}
         if(note.getBoundingClientRect().top<0||note.getBoundingClientRect().bottom>innerHeight)note.scrollIntoView({block:'nearest',behavior:'instant'});
     }
@@ -67,24 +81,28 @@ function host() { return hostname($('#site').value); }
 async function refresh() {
     current = await send('sm:status', $('#site').value.trim() ? {hostname:host()} : {});
     $('#version').textContent = `v${current.release.productVersion}`;
-    $('#status').textContent = `默认：${modeNames[current.defaultFilteringMode]} · 已启用 ${current.enabledRulesets.length} 组规则 · 中文规则${current.enabledRulesets.includes('chn-0')?'已开启':'未开启'}`;
+    const base=['easylist','easyprivacy'].every(id=>current.enabledRulesets.includes(id)),chinese=current.enabledRulesets.includes('chn-0');
+    $('#status').textContent = `默认：${modeNames[current.defaultFilteringMode]} · ${base?'广告与跟踪规则已开启':'广告与跟踪规则未完整开启'} · 中文网站规则${chinese?'已开启':'未开启'}`;
     list($('#diagnostics'),[
         `网站访问权限：${current.hasAccess?'可用':'不足，请在扩展详情中检查网站访问权限'}`,
         `用户脚本权限：${current.userScripts?'可用':'未开放，导入订阅中的部分元素／脚本规则可能不生效；在扩展详情中开启“允许用户脚本”'}`,
         `规则引擎：已返回配置。此状态不等于所有广告都能过滤。`,
         ...(current.startError ? [`后台恢复提示：${current.startError}`] : []),
     ]);
-    $('#siteStatus').textContent = current.hostname ? `${current.hostname} · ${current.pauses[current.hostname]?'已暂停':modeNames[current.level]}` : '输入网站后，可调整过滤或临时暂停。';
-    $('#mode').value=String(current.level);
+    const sitePause=current.pauses[current.hostname];
+    $('#siteStatus').textContent = current.hostname ? `${current.hostname} · ${sitePause?`已暂停（${pauseText(sitePause)}）`:modeNames[current.level]}` : '输入网站后，可调整过滤或临时暂停。';
+    // While paused the site is "不过滤"; the selector shows the mode it returns to.
+    $('#mode').value=String(sitePause&&Number.isInteger(sitePause.level)?sitePause.level:current.level);
     $('#cookies').checked=current.cookieReject;
     $('#cookieResult').textContent=current.cookies ? `${current.cookies.provider}：${current.cookies.result}（${date(current.cookies.time)}）` : '此站点暂无自动拒绝记录；隐藏弹窗不代表已拒绝同意。';
     $('#syncEnabled').checked=current.syncEnabled;
-    $('#repository').value=current.repository || current.release.repository;
     $('#ruleVersion').textContent=`SM ${current.release.productVersion} · 扩展升级版本 ${chrome.runtime.getManifest().version} · 内置规则/引擎 ${current.release.engineVersion}`;
-    const repo=$('#repository').value;
+    const repo=current.release.repository;
+    $('#sendHint').textContent=`复制报告后发给${current.release.supportContact||'向你提供本扩展的人'}。${repo?'有 GitHub 账号也可以直接在 GitHub 提交。':''}`;
     $('#releases').hidden=!repo; if(repo) $('#releases').href=`${repo}/releases`;
-    list($('#pauses'),Object.entries(current.pauses).map(([h,p])=>`${h}：暂停至 ${p.until?date(p.until):'本次浏览器会话结束'}`));
-    const history = await send('sm:history'); list($('#history'),history.map(h=>`${date(h.time)} · ${h.label}`));
+    list($('#pauses'),Object.entries(current.pauses).map(([h,p])=>`${h}：已暂停，${pauseText(p)}`));
+    const history = await send('sm:history'); historyCount=history.length;
+    if(history.length)list($('#history'),history.map(h=>`${date(h.time)} · ${h.label}`));else empty($('#history'),'还没有可撤销的修改。');
     showNotice();
     await showChecklist();
     wizardRender();
@@ -93,7 +111,10 @@ async function refresh() {
 }
 async function showLists() {
     const lists=await send('sm:lists');
-    list($('#lists'),lists.length?lists.map(x=>`${x.name || x.id} · ${x.enabled?'启用':'停用'} · 最近成功：${date(x.smSuccessAt)} · 最近尝试：${date(x.smAttemptedAt)}${x.smError?` · ${x.smError}`:''}`):['没有导入订阅。可在完整设置中添加。']);
+    listCount=lists.length;
+    if(lists.length)list($('#lists'),lists.map(x=>`${x.name || x.id} · ${x.enabled?'启用':'停用'} · 最近成功：${date(x.smSuccessAt)} · 最近尝试：${date(x.smAttemptedAt)}${x.smError?` · ${x.smError}`:''}`));
+    else empty($('#lists'),'还没有导入的订阅。需要时可在“完整设置 → 过滤规则列表”里添加。');
+    actionState();
 }
 function showFilters() {
     const needle=$('#filterSearch').value.trim().toLowerCase(); const container=$('#customFilters');container.replaceChildren();
@@ -106,13 +127,13 @@ function showFilters() {
         button.onclick=()=>run(button,async()=>{await send('sm:removeFilter',{hostname:h,selector});filters=await send('sm:filters');showFilters();await refresh();});
         row.append(text,button);container.append(row);
     }
-    const note=document.createElement('p');note.textContent=count?`匹配 ${count} 条，第 ${filterPage+1} 页，每页 100 条。`:'没有匹配的自定义规则。';container.prepend(note);$('#filterPrev').disabled=filterPage===0;$('#filterNext').disabled=count<=(filterPage+1)*100;
+    const note=document.createElement('p');note.className='muted';note.textContent=count?`共 ${count} 条，第 ${filterPage+1} 页，每页 100 条。`:'没有已隐藏的元素。';container.prepend(note);$('#filterPager').hidden=count<=100;$('#filterPrev').disabled=filterPage===0;$('#filterNext').disabled=count<=(filterPage+1)*100;
 }
 async function preview(data) {
     pending=null;$('#applyImport').disabled=true;$('#confirmImport').checked=false;
-    const result=await send('sm:preview',{data});pending=result.data;pendingBase=result.baseRevision;
+    const result=await send('sm:preview',{data});pending=result.data;pendingBase=result.baseRevision;$('#preview').hidden=false;$('#importConfirm').hidden=false;
     const s=result.summary;
-    $('#preview').textContent=`备份时间：${pending.createdAt}\n规则组 ${s.lists} · 站点例外 ${s.sites} · 自定义规则 ${s.custom}\n外部订阅 ${s.subscriptions} · 高级规则 ${s.advanced?'有（请确认来源）':'无'}\n将替换当前配置并结束所有临时暂停；操作前保留本地恢复快照，失败会自动回退。\n站点例外：${JSON.stringify(pending.settings.filteringModes,null,2)}\n规则列表：${pending.settings.enabledRulesets.join(', ')}`;
+    $('#preview').textContent=`备份时间：${pending.createdAt}\n规则组 ${s.lists} · 站点设置 ${s.sites} · 已隐藏的元素 ${s.custom}\n外部订阅 ${s.subscriptions} · 高级规则 ${s.advanced?'有（请确认来源）':'无'}\n将替换当前配置并结束所有临时暂停；操作前保留本地恢复快照，失败会自动回退。\n站点例外：${JSON.stringify(pending.settings.filteringModes,null,2)}\n规则列表：${pending.settings.enabledRulesets.join(', ')}`;
 }
 
 // ---- interrupted-operation notice, first-use checklist, site recovery wizard -------------------------------------
@@ -128,14 +149,16 @@ function showNotice() {
 const extensionDetailsUrl = () => `${/Edg\//.test(navigator.userAgent) ? 'edge' : 'chrome'}://extensions/?id=${chrome.runtime.id}`;
 async function showChecklist() {
     const dismissed = (() => { try { return localStorage.getItem('sm.startDismissed') === '1'; } catch { return false; } })();
-    const rulesOn = ['chn-0','easylist','easyprivacy'].every(id => current.enabledRulesets.includes(id));
+    const rulesOn = RECOMMENDED.every(id => current.enabledRulesets.includes(id));
+    const chinese = current.enabledRulesets.includes('chn-0');
     const lines = [
-        rulesOn ? '过滤规则：推荐规则已启用。' : '过滤规则：尚未启用推荐规则。点击下方“启用推荐规则”。',
-        current.hasAccess ? '网站访问权限：可用。' : '网站访问权限：不足。过滤需要读取和调整网页：在扩展详情页把“网站访问权限”设为“在所有网站上”。仅授予单个网站时，其他网站不会被过滤。',
-        '固定到工具栏：点击浏览器工具栏的拼图图标，再点 SM 净览旁的图钉，之后一键暂停此站点。',
+        [rulesOn, rulesOn ? '过滤规则：广告、跟踪和中文网站规则都已开启。' : chinese ? '过滤规则：广告与跟踪规则未完整开启，点上方“开启推荐规则”。' : '过滤规则：广告与跟踪规则已在保护你；中文网站规则未开启，点上方“开启中文网站规则”。'],
+        [current.hasAccess, current.hasAccess ? '网站访问权限：可用。' : '网站访问权限：不足。在扩展详情页把“网站访问权限”设为“在所有网站上”，否则其他网站不会被过滤。'],
+        [null, '固定到工具栏：点浏览器工具栏的拼图图标，再点 SM 净览（绿色 S 图标）旁的图钉。之后在任何网站点它就能一键暂停。'],
     ];
-    list($('#startChecks'), lines);
-    $('#startRecommended').hidden = rulesOn;
+    $('#startChecks').replaceChildren(...lines.map(([ok, text]) => { const li = document.createElement('li'); li.textContent = text; if (ok !== null) li.dataset.ok = String(ok); return li; }));
+    $('#recommended').textContent = chinese ? '开启推荐规则' : '开启中文网站规则';
+    $('#openExtDetails').hidden = current.hasAccess;
     // Show until everything is in place or the user dismisses it; permission trouble is never hidden by "dismissed".
     $('#start').hidden = dismissed && rulesOn && current.hasAccess;
     let capacity = `已启用 ${current.enabledRulesets.length} 组规则（浏览器上限 ${current.maxNumberOfEnabledRulesets} 组）`;
@@ -155,21 +178,21 @@ function wizardRender() {
     if (!valid && wizard.step !== 0) wizard.step = 0;
     switch (wizard.step) {
     case 0:
-        say(valid ? `当前网站：${host}。我们按“暂停 → 降低强度 → 反馈”的顺序排查，每一步都可恢复。` : '请先在上方输入出现异常的网站并点击“查看”。');
+        say(valid ? `当前网站：${host}。按“暂停 → 降低一档 → 反馈”的顺序排查，每一步都可恢复。` : '请先在上方输入出现异常的网站并点击“查看”。');
         button('wizStart', '第 1 步：暂停此站点 10 分钟', async () => { wizard.level = level; await send('sm:pause', {hostname: host, duration: '10m'}); wizard.step = 1; await refresh(); }, false).disabled = !valid;
         break;
     case 1:
-        say(`已暂停 ${host} 10 分钟并刷新网页。网页现在正常了吗？`);
+        say(`已暂停 ${host} 10 分钟并刷新网页。请切换到那个网页看一下：现在正常了吗？`);
         button('wizFixed', '正常了', async () => { wizard.step = 2; wizardRender(); }, false);
         button('wizStill', '仍然异常', async () => { wizard.step = 3; wizardRender(); });
         break;
     case 2:
         {   // While paused the site reads as "不过滤"; the level before the pause is what can be lowered.
             const base = wizard.level ?? 2;
-            say(base > 1 ? `暂停后恢复正常，说明问题与过滤有关。可只对 ${host} 把“${modeNames[base]}”降低一档，并恢复保护。` : `暂停后恢复正常，说明问题与过滤有关。此站点原本只用“${modeNames[base]}”，已经很低，建议提交反馈。`);
+            say(base > 1 ? `问题与过滤有关。可以只对 ${host} 从“${modeNames[base]}”降低一档并恢复保护，其他网站不受影响。` : `问题与过滤有关。此站点已经是“${modeNames[base]}”，建议提交反馈。`);
             if (base > 1) button('wizLower', `降低到“${modeNames[base - 1]}”并恢复保护`, async () => { await send('sm:setMode', {hostname: host, level: base - 1}); wizard.step = 4; await refresh(); }, false);
         }
-        button('wizReport', '去提交反馈', async () => { $('#issueKind').value = '网页功能异常'; location.hash = '#feedback'; });
+        button('wizReport', '反馈这个网站', async () => { $('#issueKind').value = '网页功能异常'; location.hash = '#feedback'; });
         break;
     case 3:
         say('暂停后仍然异常，多半与过滤无关（网站本身、网络或其他扩展）。建议恢复保护。');
@@ -185,7 +208,6 @@ function wizardRender() {
     }
     body.append(row);
 }
-$('#startRecommended').onclick = event => run(event.currentTarget, async () => { await send('sm:preset', {preset: 'recommended'}); await refresh(); });
 $('#startDone').onclick = () => { try { localStorage.setItem('sm.startDismissed', '1'); } catch { /* Private mode: keep showing. */ } $('#start').hidden = true; };
 $('#openExtDetails').onclick = event => run(event.currentTarget, async () => { await chrome.tabs.create({url: extensionDetailsUrl()}); });
 // Local diagnostics for support: versions, permissions and states only (no URLs, rule text or history).
@@ -203,15 +225,16 @@ on('#recommended',async()=>{await send('sm:preset',{preset:'recommended'});await
 on('#quiet',async()=>{await send('sm:preset',{preset:'quiet'});await refresh();});
 on('#setMode',async()=>{await send('sm:setMode',{hostname:host(),level:Number($('#mode').value)});await refresh();});
 on('#pause10',async()=>{await send('sm:pause',{hostname:host(),duration:'10m'});await refresh();});
+on('#pause1h',async()=>{await send('sm:pause',{hostname:host(),duration:'1h'});await refresh();});
 on('#pauseSession',async()=>{await send('sm:pause',{hostname:host(),duration:'session'});await refresh();});
 on('#resume',async()=>{await send('sm:resume',{hostname:host()});await refresh();});
 $('#cookies').onchange=event=>run(event.currentTarget,async()=>{await send('sm:cookieToggle',{enabled:$('#cookies').checked});await refresh();});
 on('#updateLists',async()=>{
-    $('#cancelUpdate').disabled=false;
+    $('#cancelUpdate').disabled=false;$('#cancelUpdate').hidden=false;
     const timer=setInterval(async()=>{try{const job=await send('sm:updateProgress');$('#updateStatus').textContent=job.state==='committing'?'正在编译并提交规则…':`正在下载：${job.files} 个文件，${Math.round(job.bytes/1024)} KB`;
     $('#cancelUpdate').disabled=job.state!=='downloading';}catch{}},500);
     try{await send('sm:updateLists');await showLists();$('#updateStatus').textContent='订阅更新尝试结束；请查看每项订阅的成功时间和错误记录。失败时保留上次可用规则。';}
-    finally{clearInterval(timer);$('#cancelUpdate').disabled=true;}
+    finally{clearInterval(timer);$('#cancelUpdate').disabled=true;$('#cancelUpdate').hidden=true;}
 });
 on('#cancelUpdate',async()=>{await send('sm:cancelUpdate');$('#updateStatus').textContent='下载已取消，当前规则保留。';});
 on('#checkUpdate',async()=>{
@@ -222,23 +245,31 @@ let filterPage=0,searchTimer;
 on('#loadFilters',async()=>{filters=await send('sm:filters');filterPage=0;showFilters();});$('#filterSearch').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{filterPage=0;showFilters();},150);};
 on('#filterPrev',()=>{filterPage=Math.max(0,filterPage-1);showFilters();});on('#filterNext',()=>{filterPage++;showFilters();});
 on('#undo',async()=>{await send('sm:undo');await refresh();filters=await send('sm:filters');showFilters();});
-on('#clearHistory',async()=>{if(confirm('清除本机操作历史、恢复快照与 Cookie 处理记录？当前过滤设置保留。')) {await send('sm:clearRecords');await refresh();}});
+on('#clearHistory',async()=>{if(!armed($('#clearHistory'),'再点一次确认清除（设置保留）'))return 'armed';await send('sm:clearRecords');await refresh();});
 on('#export',async()=>{if(Object.keys(current.pauses).length)throw new Error('请先恢复临时暂停的网站，再导出持久配置');download('sm-jinglan-config.json',await send('sm:snapshot'));});
 on('#recovery',async()=>{const data=await send('sm:recovery');if(!data)throw new Error('尚无恢复快照');download('sm-jinglan-recovery.json',data);});
 $('#import').onchange=event=>run(event.currentTarget,async()=>{
     pending=null;$('#applyImport').disabled=true;
-    const file=event.target.files[0];if(!file)return;if(file.size>500000)throw new Error('文件超过 500 KB');await preview(JSON.parse(await file.text()));
+    const file=event.target.files[0];if(!file)return;$('#importName').textContent=file.name;if(file.size>500000)throw new Error('文件超过 500 KB');await preview(JSON.parse(await file.text()));
 });
 $('#confirmImport').onchange=()=>{$('#applyImport').disabled=!pending||!$('#confirmImport').checked;};
 on('#applyImport',async()=>{if(!pending||!$('#confirmImport').checked)throw new Error('请先预览并确认');await send('sm:restore',{data:pending,baseRevision:pendingBase});pending=null;$('#confirmImport').checked=false;await refresh();$('#preview').textContent='导入完成，并已读回验证。';});
 $('#syncEnabled').onchange=event=>run(event.currentTarget,async()=>{await send('sm:syncEnable',{enabled:$('#syncEnabled').checked});cloudRead=false;await refresh();});
 on('#syncRead',async()=>{const cloud=await send('sm:syncRead');cloudRevision=cloud?.revision??null;cloudRead=true;$('#syncStatus').textContent=cloud?`已读取版本 ${cloud.revision}；未应用。请检查下方备份预览并确认。`:'同步存储当前没有配置。';if(cloud)await preview(cloud.data);});
-on('#syncWrite',async()=>{if(!cloudRead)throw new Error('请先读取云端，避免覆盖未知配置');if(!confirm('将当前配置上传到浏览器同步存储，并替换刚才读取的云端配置？'))return;const cloud=await send('sm:syncWrite',{expectedRevision:cloudRevision});cloudRevision=cloud.revision;$('#syncStatus').textContent=`同步存储已写入并读回：${cloud.revision}。其他设备接收情况未验证。`;});
-on('#syncDelete',async()=>{if(!confirm('删除当前扩展的云端配置？本机设置保留。'))return;await send('sm:syncDelete');cloudRead=false;$('#syncStatus').textContent='已删除同步存储中的配置。';});
-on('#saveRepository',async()=>{await send('sm:repository',{url:$('#repository').value.trim()});await refresh();});
-on('#generateReport',async()=>{await refresh();$('#report').value=reportText({site:current.hostname,version:current.release.productVersion,engine:current.release.engineVersion,mode:current.level,rulesets:current.enabledRulesets.length,permissions:current.hasAccess,kind:$('#issueKind').value,description:$('#description').value});});
+on('#syncWrite',async()=>{if(!cloudRead)throw new Error('请先读取云端，避免覆盖未知配置');if(!armed($('#syncWrite'),'再点一次：替换云端配置'))return 'armed';const cloud=await send('sm:syncWrite',{expectedRevision:cloudRevision});cloudRevision=cloud.revision;$('#syncStatus').textContent=`同步存储已写入并读回：${cloud.revision}。其他设备接收情况未验证。`;});
+on('#syncDelete',async()=>{if(!armed($('#syncDelete'),'再点一次确认删除（本机保留）'))return 'armed';await send('sm:syncDelete');cloudRead=false;$('#syncStatus').textContent='已删除同步存储中的配置。';});
+on('#generateReport',async()=>{await refresh();$('#report').value=reportText({site:current.hostname,version:current.release.productVersion,engine:current.release.engineVersion,mode:current.level,rulesets:current.enabledRulesets.length,permissions:current.hasAccess,kind:$('#issueKind').value,description:$('#description').value});$('#reportBlock').hidden=false;actionState();});
 on('#copyReport',async()=>{if(!$('#report').value)throw new Error('请先生成报告');await navigator.clipboard.writeText($('#report').value);});
 on('#downloadReport',async()=>{if(!$('#report').value)throw new Error('请先生成报告');download('sm-jinglan-report.txt',$('#report').value,'text/plain');});
-on('#sendReport',async()=>{const repo=current.repository||current.release.repository;if(!repo)throw new Error('SM 仓库尚未配置，请先复制或下载报告');if(!$('#report').value)throw new Error('请先生成并检查报告');if(!confirm('将预览报告交给 GitHub，并打开问题填写页？'))return;const url=new URL(`${repo}/issues/new`);url.searchParams.set('title',`[SM 净览] ${$('#issueKind').value}`);url.searchParams.set('body',$('#report').value);await chrome.tabs.create({url:url.href});});
-const params=new URLSearchParams(location.search);if(params.get('site'))$('#site').value=params.get('site');
+on('#sendReport',async()=>{const repo=current.release.repository;if(!repo)throw new Error('尚未配置提交渠道，请复制报告');if(!$('#report').value)throw new Error('请先生成并检查报告');const url=new URL(`${repo}/issues/new`);url.searchParams.set('title',`[SM 净览] ${$('#issueKind').value}`);url.searchParams.set('body',$('#report').value);await chrome.tabs.create({url:url.href});});
+const params=new URLSearchParams(location.search);if(params.get('site'))$('#site').value=params.get('site');if(params.get('issue')==='broken')$('#issueKind').value='网页功能异常';
+$('#pickImport').onclick=()=>$('#import').click();
+$('#syncEnabled').addEventListener('change',actionState);
+// One page at a time; the hash picks it (report.html and the popup link straight to #feedback).
+const PAGES=['protection','rules','migration','feedback','about'];
+function route(){const id=PAGES.includes(location.hash.slice(1))?location.hash.slice(1):'protection';
+    for(const page of PAGES)document.getElementById(page).hidden=page!==id;
+    for(const a of document.querySelectorAll('nav a[data-page]')){if(a.dataset.page===id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
+    document.title=`SM 净览 · ${document.getElementById(id).dataset.title}`;scrollTo(0,0);}
+addEventListener('hashchange',route);route();
 run($('#refresh'),refresh);

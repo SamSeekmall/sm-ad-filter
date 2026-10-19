@@ -199,7 +199,7 @@ export function createController(engine, ready, parseDnr, options = {}) {
             await pauses.reloadHost(host); return value;
         }
         case 'sm:pause': {
-            if (!host || !['10m', 'session'].includes(r.duration)) throw new Error('暂停参数无效');
+            if (!host || !['10m', '1h', 'session'].includes(r.duration)) throw new Error('暂停参数无效');
             return pauses.start(host, r.duration);
         }
         case 'sm:resume': await pauses.resume(host, true); return true;

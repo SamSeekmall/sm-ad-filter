@@ -51,12 +51,14 @@ await mkdir(out, { recursive: true });
 try {
 await cp(path.join(root,'chromium'),out,{recursive:true});
 await mkdir(path.join(out,'sm'),{recursive:true});
-for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json','tokens.css']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
 // Inline only local styles and official Tabler icon nodes: no blocking stylesheet/icon requests.
 const iconNodes = JSON.parse(await readFile(path.join(root,'sm/icons/tabler.json'),'utf8'));
 let popup = await readFile(path.join(root,'sm/popup.html'),'utf8');
-popup = popup.replace('src="brand.png"',`src="data:image/png;base64,${(await readFile(path.join(root,'sm/brand.png'))).toString('base64')}"`);
-popup = popup.replace('<link rel="stylesheet" href="popup.css">',`<style>${await readFile(path.join(root,'sm/popup.css'),'utf8')}</style>`);
+const brandMark = (await readFile(path.join(root,'sm/brand/mark.svg'),'utf8')).trim();
+popup = popup.replace('{{brand}}', brandMark.replace('<svg ','<svg class="brand" aria-hidden="true" focusable="false" '));
+popup = popup.replace('<link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="popup.css">',`<style>${await readFile(path.join(root,'sm/tokens.css'),'utf8')}${await readFile(path.join(root,'sm/popup.css'),'utf8')}</style>`);
+if (/\{\{brand\}\}|href="(tokens|popup)\.css"/.test(popup)) throw Error('popup inlining failed');
 popup = popup.replace(/\{\{([a-z-]+)\}\}/g,(_,name)=>{
     if(!iconNodes[name])throw Error(`Missing icon ${name}`);
     const nodes=iconNodes[name].map(([tag,attrs])=>`<${tag} ${Object.entries(attrs).map(([k,v])=>`${k}="${v}"`).join(' ')}/>`).join('');
@@ -65,6 +67,10 @@ popup = popup.replace(/\{\{([a-z-]+)\}\}/g,(_,name)=>{
 await writeFile(path.join(out,'sm/popup.html'),popup);
 await cp(path.join(root,'sm/icons/LICENSE.txt'),path.join(out,'sm/TABLER-LICENSE.txt'));
 await cp(path.join(root,'sm/welcome.html'),path.join(out,'welcome.html'));
+// SM brand everywhere the browser shows the extension: toolbar (on/off), extension page, upstream page logos.
+for (const name of await readdir(path.join(root,'sm/brand'))) if (/^icon_\d+(_off)?\.png$/.test(name)) await cp(path.join(root,'sm/brand',name),path.join(out,'img',name));
+await cp(path.join(root,'sm/brand/mark.svg'),path.join(out,'img/ublock.svg'));
+await cp(path.join(root,'sm/brand/mark.svg'),path.join(out,'sm/mark.svg'));
 const manifest = JSON.parse(await readFile(path.join(out,'manifest.json'),'utf8'));
 if (manifest.version !== release.engineVersion) throw new Error('Upstream changed: review migration');
 Object.assign(manifest,{name:'SM 净览',short_name:'SM 净览',version:release.extensionVersion,version_name:`SM ${release.productVersion} / uBOL ${release.engineVersion}`,description:'广告过滤、网站排障、临时暂停、规则恢复与可选配置同步。基于 uBlock Origin Lite 的独立修改版。',options_page:'welcome.html'});
@@ -75,6 +81,11 @@ await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'
 const contract = [];
 // Every upstream seam: the needle must occur exactly `count` times, so a changed upstream fails loudly
 // instead of being patched in the wrong place (or only the first of several places).
+async function append(file,text,purpose) {
+    const target = path.join(out,file);
+    await writeFile(target,(await readFile(target,'utf8')).replaceAll('\r\n','\n')+text);
+    contract.push({ file, purpose: `append: ${purpose}`, matches: 1, needleSha256: sha(text).slice(0,16) });
+}
 async function patch(file,needle,replacement,purpose = '',count = 1) {
     const target = path.join(out,file); const text = (await readFile(target,'utf8')).replaceAll('\r\n','\n');
     const found = text.split(needle).length - 1;
@@ -90,6 +101,10 @@ await patch('js/backup-restore.js','manifest.versionName ?? manifest.version','m
 await patch('popup.html','<main>', '<main><nav class="smToolsNav" aria-label="元素工具导航"><a id="smBack" href="sm/popup.html">← 返回</a><strong>元素工具</strong></nav>');
 await patch('popup.html','</head>', '<style>html#uBO-popup-panel,html#uBO-popup-panel body{width:380px;min-width:380px}.smToolsNav{visibility:visible;pointer-events:auto;position:relative;z-index:1001;background:var(--surface-1);display:flex;align-items:center;gap:24px;padding:14px 18px;border-bottom:1px solid #cbded7;font:16px/1.5 system-ui}.smToolsNav a{color:inherit;text-decoration:none;padding:6px 10px;border:1px solid #8da69c;border-radius:8px}.smToolsNav a:focus-visible{outline:3px solid #b97a0d;outline-offset:2px}</style></head>');
 await patch('popup.html','</main>','<p style="text-align:center"><a href="welcome.html" target="_blank" rel="noopener">SM 净览 · 控制中心</a></p></main>');
+// Upstream pages: SM brand colour instead of uBO blue, SM name on the logo, one backup entry (SM's).
+await append('css/default.css', `\n/* SM 净览: brand palette (green) replaces the upstream blue primary ramp. */\n:root{--primary-20:10 52 42;--primary-30:14 80 64;--primary-40:20 113 92;--primary-50:31 140 114;--primary-60:63 174 140;--primary-70:110 199 170;--primary-80:163 222 201;--primary-90:212 240 229;--primary-95:233 247 241}\n`, 'brand palette');
+await patch('dashboard.html','alt="uBO Lite"','alt="SM 净览"');
+await patch('dashboard.html','<div>\n        <h3 data-i18n="settingsBackupRestoreLabel">_</h3>','<div class="smBackupPointer"><h3>备份与恢复</h3><p>备份、导入、撤销和同步统一在 <a href="welcome.html#migration" target="_blank">SM 控制中心 → 备份与撤销</a>：导入前可预览，失败会自动回退。</p></div>\n    <div hidden>\n        <h3 data-i18n="settingsBackupRestoreLabel">_</h3>','single backup entry: upstream backup/restore/reset hidden, pointed at the SM control center');
 await patch('js/imported-lists.js','export async function updateImportedLists() {','export async function updateImportedLists(force = false) {');
 await patch('js/imported-lists.js','if ( updateTime > now ) { continue; }','if ( !force && updateTime > now ) { continue; }');
 await patch('js/background.js','const count = await updateImportedLists();','const count = await updateImportedLists(request.force === true);');
@@ -111,7 +126,10 @@ for (const dir of await readdir(path.join(out,'_locales'))) {
     const file = path.join(out,'_locales',dir,'messages.json');
     const strings = JSON.parse(await readFile(file,'utf8'));
     for (const value of Object.values(strings)) if (typeof value.message === 'string') value.message = value.message.replaceAll('uBlock Origin Lite','SM 净览').replaceAll('uBO Lite','SM 净览');
-    if (strings.supportS3P1) strings.supportS3P1.message = 'SM 净览：请使用工具栏的“反馈问题”，生成脱敏报告并提交到已配置的 SM 仓库。';
+    // One vocabulary for the three filtering levels (see sm/core.mjs modeNames).
+    const levels = { zh_CN: ['轻度','标准','强力'], zh_TW: ['輕度','標準','強力'] }[dir];
+    if (levels) levels.forEach((name, i) => { if (strings[`filteringMode${i + 1}Name`]) strings[`filteringMode${i + 1}Name`].message = name; });
+    if (strings.supportS3P1) strings.supportS3P1.message = 'SM 净览：请使用工具栏弹窗里的“反馈问题”，生成脱敏报告后复制发给 SM 支持渠道。';
     await writeFile(file,JSON.stringify(strings,null,2)+'\n');
 }
 await writeFile(path.join(out,'report.html'),'<!doctype html><meta charset="utf-8"><title>SM 净览反馈</title><a href="welcome.html#feedback">打开 SM 净览反馈中心</a><script type="module" src="sm/report-redirect.js"></script>');

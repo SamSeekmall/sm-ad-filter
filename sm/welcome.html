@@ -1,18 +1,134 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SM 净览 · 控制中心</title><link rel="stylesheet" href="sm/welcome.css">
-<main><header><span class="logo" aria-hidden="true">S</span><span>SM 净览 <small id="version">控制中心</small></span></header>
-<nav aria-label="控制中心导航"><a href="#protection">保护</a><a href="#rules">规则</a><a href="#migration">备份与同步</a><a href="#feedback">反馈</a><a href="dashboard.html" target="_blank" rel="noopener">完整设置 ↗</a></nav>
-<section class="hero"><p class="eyebrow">让网页回归内容</p><h1>保护与设置</h1><p>网站显示异常？先暂停过滤试试。</p></section>
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SM 净览 · 控制中心</title><link rel="stylesheet" href="sm/tokens.css"><link rel="stylesheet" href="sm/welcome.css">
+<div class="shell">
+<aside class="side">
+<header class="brandRow"><img class="mark" src="sm/mark.svg" width="34" height="34" alt=""><span><strong>SM 净览</strong><small id="version">控制中心</small></span></header>
+<nav aria-label="控制中心导航" id="nav"><a href="#protection" data-page="protection">当前网站</a><a href="#rules" data-page="rules">规则</a><a href="#migration" data-page="migration">备份与撤销</a><a href="#feedback" data-page="feedback">反馈</a><a href="#about" data-page="about">诊断与关于</a><a href="dashboard.html" target="_blank" rel="noopener" class="external">完整设置 ↗</a></nav>
+</aside>
+<main>
 <p id="notice" class="notice" role="status" aria-live="polite"></p>
-<section class="panel" id="start" hidden><h2>开始使用</h2><ul id="startChecks"></ul><div class="actions"><button id="startRecommended">启用推荐规则</button><button id="openExtDetails" class="secondary">打开扩展详情页</button><button id="startDone" class="secondary">知道了</button></div></section>
-<section class="panel" id="protection"><h2>保护状态</h2><p id="status">正在读取…</p><label for="site">网站</label><div class="actions"><input id="site" type="text" placeholder="例如 example.com" autocomplete="off"><button id="checkSite" class="secondary">查看</button></div><p id="siteStatus"></p><div id="siteActions" class="actions"><label>过滤模式 <select id="mode" disabled><option value="0">不过滤</option><option value="1">基础</option><option value="2">优化（推荐）</option><option value="3">完整</option></select></label><button id="setMode" disabled>应用</button><button id="pause10" disabled class="secondary">暂停 10 分钟</button><button id="pauseSession" disabled class="secondary">暂停至重启</button><button id="resume" disabled class="secondary">恢复保护</button></div><details class="help" id="wizard"><summary>网页显示异常？分步排查</summary><div id="wizardBody"></div></details><details class="help"><summary>模式和暂停说明</summary><p class="muted">基础：拦截网络请求；优化：同时隐藏部分广告；完整：更广泛地隐藏元素，可能影响网页。</p><p class="muted">暂停后自动恢复；关闭浏览器时，下次启动再检查。</p></details><ul id="pauses"></ul><details class="diagnosticDetails"><summary>权限与诊断</summary><ul id="diagnostics"></ul><div class="actions"><button id="copyDiagnostics" class="secondary">复制诊断信息</button></div><p class="muted">诊断信息只含版本、权限与状态，不含网址、规则内容或浏览记录；提交反馈时可附上。</p></details><div class="actions"><button id="recommended">推荐规则</button><button id="quiet" class="secondary">减少骚扰</button><button id="refresh" class="secondary">刷新状态</button></div><p class="muted">推荐规则过滤广告与跟踪；减少骚扰可过滤浮层、通知等。</p>
+
+<!-- 当前网站: the everyday page. -->
+<section class="page" id="protection" data-title="当前网站">
+<h1>当前网站</h1>
+<section class="panel" id="start" hidden>
+<h2>开始使用</h2>
+<ul id="startChecks" class="checks"></ul>
+<div class="actions"><button id="openExtDetails" class="secondary" hidden>打开扩展详情页</button><button id="startDone" class="secondary">完成设置</button></div>
 </section>
-<section class="panel"><h2>Cookie 提示</h2><label><input id="cookies" type="checkbox"> 自动点击“拒绝全部”</label><p>支持 OneTrust、Cookiebot 标准提示；不会点击同意。开启后刷新网页。</p><p id="cookieResult" class="muted">隐藏 Cookie 弹窗的规则不等于已经拒绝同意。</p></section>
-<section class="panel" id="rules"><h2>规则与更新</h2><p id="ruleVersion"></p><p>内置规则随安装包更新；导入订阅独立检查到期更新。规则总量不代表实际拦截效果。</p><p id="ruleCapacity" class="muted"></p><div class="actions"><button id="updateLists">更新导入订阅</button><button id="cancelUpdate" class="secondary" disabled>取消下载</button><button id="checkUpdate" class="secondary">检查程序更新</button><a id="releases" target="_blank" rel="noopener" hidden>查看发布与回退包 ↗</a></div><p id="updateStatus"></p><ul id="lists"></ul>
-<h2>自定义规则</h2><label for="filterSearch">按域名筛选</label><input id="filterSearch" placeholder="输入域名筛选"><button id="loadFilters" class="secondary">读取规则</button><div id="customFilters"></div><div class="actions"><button id="filterPrev" class="secondary" disabled>上一页</button><button id="filterNext" class="secondary" disabled>下一页</button></div><p class="muted">添加规则请使用工具栏“元素工具”。删除后刷新网页；误删除可撤销。</p></section>
-<section class="panel"><h2>最近修改与撤销</h2><div class="actions"><button id="undo">撤销最近一次修改</button><button id="clearHistory" class="secondary">清除本地操作记录</button></div><ul id="history"></ul><p class="muted">保留最近 10 次设置修改（最多约 2 MB），只保存在本机。临时暂停请用“恢复保护”。其他变化导致冲突时，不会直接覆盖。</p></section>
-<section class="panel" id="migration"><h2>备份与迁移</h2><div class="actions"><button id="export">导出配置文件</button><button id="recovery" class="secondary">下载最近恢复快照</button><label class="fileLabel">选择配置文件 <input id="import" type="file" accept=".json,application/json"></label></div><p>配置可能包含站点例外、订阅地址和自定义规则。导入前请核对来源；高级规则或订阅可能改变网页行为。Chrome 与 Edge 之间请使用文件迁移。</p><pre id="preview">尚未选择文件</pre><label><input id="confirmImport" type="checkbox"> 我已核对预览，并同意替换当前配置</label><button id="applyImport" disabled>应用已预览配置</button>
-<h2>可选浏览器同步</h2><label><input id="syncEnabled" type="checkbox"> 允许将配置保存到当前浏览器账号的同步存储</label><p class="muted">不会自动上传或覆盖。只同步配置，不同步操作历史、Cookie 记录或浏览历史；配置本身可能包含域名。依赖同一浏览器账号、扩展 ID 及浏览器同步设置，Chrome 与 Edge 互不共享。单份配置上限 7 KB，超出请使用文件迁移。写入成功不代表另一台设备已收到。</p><div class="actions"><button id="syncRead" class="secondary">读取云端并预览</button><button id="syncWrite">上传当前配置</button><button id="syncDelete" class="secondary">删除云端配置</button></div><p id="syncStatus">同步未读取</p></section>
-<section class="panel" id="feedback"><h2>反馈漏拦或网页异常</h2><p>报告默认只包含域名、版本和保护状态，不包含网址路径、查询参数、账号或完整规则内容。请检查你填写的描述。</p><label>问题类型 <select id="issueKind"><option>广告漏拦</option><option>网页功能异常</option><option>设置或更新问题</option><option>其他建议</option></select></label><label for="description">现象与复现步骤</label><textarea id="description" rows="4" maxlength="4000" placeholder="例如：打开页面后无法播放；暂停此站点过滤后恢复正常"></textarea><button id="generateReport">生成脱敏预览</button><textarea id="report" rows="8" readonly aria-label="反馈报告预览"></textarea><div class="actions"><button id="copyReport" class="secondary">复制报告</button><button id="downloadReport" class="secondary">下载报告</button><button id="sendReport">打开仓库填写问题</button></div><p class="muted">打开仓库会将预览报告交给 GitHub；最终提交由你确认。未配置仓库时可复制报告交给开发者。</p>
-<label for="repository">SM GitHub 仓库地址</label><input id="repository" type="url" placeholder="输入已确认的 SM 仓库地址"><button id="saveRepository" class="secondary">保存渠道</button></section>
-<section class="notes"><h2>安装与支持范围</h2><p>解压安装包，在 chrome://extensions 或 edge://extensions 开启开发者模式并加载目录。正式商店渠道尚未上线。扩展商店、浏览器内部页面等受保护页面无法过滤。视频广告与反拦截效果需按具体网站验证。</p><p>网站异常时，先临时暂停；效果恢复后可生成报告。避免同时运行多个广告过滤扩展进行对比测试。</p></section>
-<footer>独立修改版，非 uBlock Origin 官方产品。原作者 Raymond Hill 及贡献者。<a href="LICENSE.txt">GPL-3.0</a> · <a href="PRIVACY-SM.md">隐私说明</a> · <a href="https://github.com/uBlockOrigin/uBOL-home" target="_blank" rel="noopener">上游源码</a></footer></main><script type="module" src="sm/welcome.js"></script></html>
+<section class="panel">
+<p id="status" class="statusLine">正在读取…</p>
+<div class="actions inline" id="recommendedRow"><button id="recommended" class="secondary">开启中文网站规则</button></div>
+<label for="site">网站</label>
+<div class="field"><input id="site" type="text" placeholder="例如 example.com" autocomplete="off"><button id="checkSite" class="secondary">查看</button></div>
+<p id="siteStatus"></p>
+<div id="siteActions">
+<div class="modeRow"><label for="mode">过滤模式</label><select id="mode" disabled><option value="0">不过滤</option><option value="1">轻度过滤</option><option value="2">标准过滤（推荐）</option><option value="3">强力过滤</option></select><button id="setMode" disabled>应用</button></div>
+<div class="actions"><button id="pause10" disabled class="secondary">暂停 10 分钟</button><button id="pause1h" disabled class="secondary">暂停 1 小时</button><button id="pauseSession" disabled class="secondary">暂停到关闭浏览器</button><button id="resume" disabled>恢复保护</button></div>
+<ul id="pauses" class="plain"></ul>
+</div>
+<details class="help"><summary>三种模式有什么区别？</summary><p class="muted">轻度：只拦截广告和跟踪的网络请求。标准（推荐）：同时隐藏网页上的广告位。强力：隐藏范围更广，偶尔会影响网页功能。暂停到时会自动恢复；“到关闭浏览器”在下次启动时恢复。</p></details>
+<div class="actions small"><button id="refresh" class="textButton">刷新状态</button></div>
+</section>
+<section class="panel" id="wizard">
+<h2>网页显示异常？分步排查</h2>
+<div id="wizardBody"></div>
+<p class="muted">更快的方法：在出问题的网页上点工具栏的 SM 图标，暂停后弹窗会直接带你排查。</p>
+</section>
+</section>
+
+<!-- 规则 -->
+<section class="page" id="rules" data-title="规则" hidden>
+<h1>规则</h1>
+<section class="panel">
+<h2>常用规则</h2>
+<p class="muted">中文网站规则覆盖国内常见广告；“减少骚扰”额外过滤浮层、通知请求和 Cookie 横幅。</p>
+<div class="actions"><button id="quiet" class="secondary">开启减少骚扰</button></div>
+</section>
+<section class="panel">
+<h2>Cookie 提示</h2>
+<label class="check"><input id="cookies" type="checkbox"> 自动点击“拒绝全部”</label>
+<p class="muted">支持 OneTrust、Cookiebot 标准提示，不会点击同意。开启后刷新网页。</p>
+<p id="cookieResult" class="muted"></p>
+</section>
+<section class="panel">
+<h2>订阅与更新</h2>
+<p class="muted">内置规则随安装包更新；你自己导入的订阅会按到期时间检查。</p>
+<ul id="lists" class="plain"></ul>
+<div class="actions"><button id="updateLists" class="secondary">立即更新导入的订阅</button><button id="cancelUpdate" class="secondary" disabled hidden>取消下载</button><button id="checkUpdate" class="secondary">检查程序更新</button><a id="releases" target="_blank" rel="noopener" hidden>查看发布与回退包 ↗</a></div>
+<p id="updateStatus"></p>
+</section>
+<section class="panel">
+<h2>已隐藏的元素</h2>
+<p class="muted">用工具栏弹窗里的“以后都隐藏”添加。删除后刷新网页即可看到；误删可在“备份与撤销”里撤销。</p>
+<div class="field"><input id="filterSearch" placeholder="按网站筛选，例如 example.com" aria-label="按网站筛选"><button id="loadFilters" class="secondary">读取已隐藏的元素</button></div>
+<div id="customFilters"></div>
+<div class="actions" id="filterPager" hidden><button id="filterPrev" class="secondary" disabled>上一页</button><button id="filterNext" class="secondary" disabled>下一页</button></div>
+</section>
+</section>
+
+<!-- 备份与撤销 -->
+<section class="page" id="migration" data-title="备份与撤销" hidden>
+<h1>备份与撤销</h1>
+<section class="panel">
+<h2>最近修改</h2>
+<ul id="history" class="plain"></ul>
+<div class="actions"><button id="undo" class="secondary">撤销最近一次修改</button><button id="clearHistory" class="secondary danger">清除本机操作记录</button></div>
+<p class="muted">保留最近 10 次设置修改，只保存在本机。临时暂停请在“当前网站”里恢复。</p>
+</section>
+<section class="panel">
+<h2>导出与导入</h2>
+<p class="muted">配置包含站点设置、订阅地址和已隐藏的元素。Chrome 与 Edge 之间请用文件迁移。</p>
+<div class="actions"><button id="export">导出配置文件</button><button id="pickImport" class="secondary">选择要导入的文件…</button><input id="import" type="file" accept=".json,application/json" hidden><span id="importName" class="muted"></span><button id="recovery" class="textButton">下载最近恢复快照</button></div>
+<pre id="preview" hidden></pre>
+<div id="importConfirm" hidden><label class="check"><input id="confirmImport" type="checkbox"> 我已核对预览，替换当前配置</label><button id="applyImport" disabled>应用已预览的配置</button><p class="muted">导入前会保留恢复快照，失败自动回退。</p></div>
+</section>
+<section class="panel">
+<h2>浏览器同步（可选）</h2>
+<label class="check"><input id="syncEnabled" type="checkbox"> 把配置保存到当前浏览器账号</label>
+<p class="muted">只同步配置，不自动覆盖；Chrome 与 Edge 不互通。</p>
+<details class="help"><summary>了解更多</summary><p class="muted">不同步操作历史、Cookie 记录或浏览历史，但配置本身可能包含域名。需要同一浏览器账号和扩展 ID，并开启浏览器同步。单份配置上限 7 KB，超出请用文件迁移。写入成功不代表另一台设备已收到。</p></details>
+<div id="syncActions" hidden><div class="actions"><button id="syncRead" class="secondary">读取云端并预览</button><button id="syncWrite" class="secondary" disabled>上传当前配置</button><button id="syncDelete" class="secondary danger">删除云端配置</button></div><p id="syncStatus" class="muted">先读取云端，再决定是否上传。</p></div>
+</section>
+</section>
+
+<!-- 反馈 -->
+<section class="page" id="feedback" data-title="反馈" hidden>
+<h1>反馈漏拦或网页异常</h1>
+<section class="panel">
+<p class="muted">报告只包含域名、版本和保护状态，不含网址路径、账号或浏览记录。请检查你填写的描述。</p>
+<label for="issueKind">问题类型</label><select id="issueKind"><option>广告漏拦</option><option>网页功能异常</option><option>设置或更新问题</option><option>其他建议</option></select>
+<label for="description">发生了什么</label>
+<textarea id="description" rows="4" maxlength="4000" placeholder="例如：打开页面后无法播放；暂停此站点过滤后恢复正常"></textarea>
+<div class="actions"><button id="generateReport">生成报告预览</button></div>
+<div id="reportBlock" hidden>
+<textarea id="report" rows="8" readonly aria-label="反馈报告预览"></textarea>
+<div class="actions"><button id="copyReport">复制报告</button><button id="downloadReport" class="secondary">下载报告</button><button id="sendReport" class="secondary" hidden>在 GitHub 提交</button></div>
+<p id="sendHint" class="muted"></p>
+</div>
+</section>
+</section>
+
+<!-- 诊断与关于 -->
+<section class="page" id="about" data-title="诊断与关于" hidden>
+<h1>诊断与关于</h1>
+<section class="panel">
+<h2>权限与诊断</h2>
+<ul id="diagnostics" class="plain"></ul>
+<div class="actions"><button id="copyDiagnostics" class="secondary">复制诊断信息</button></div>
+<p class="muted">诊断信息只含版本、权限与状态，不含网址、规则内容或浏览记录；反馈时可以附上。</p>
+</section>
+<section class="panel">
+<h2>版本与规则容量</h2>
+<p id="ruleVersion" class="muted"></p>
+<p id="ruleCapacity" class="muted"></p>
+</section>
+<section class="panel">
+<h2>安装与支持范围</h2>
+<p class="muted">本地安装：解压安装包，在 chrome://extensions 或 edge://extensions 打开开发者模式并加载目录。正式商店渠道尚未上线。扩展商店和浏览器内部页面无法过滤；视频广告与反拦截效果要按网站验证。不要同时运行多个广告过滤扩展。</p>
+</section>
+<footer>独立修改版，非 uBlock Origin 官方产品。原作者 Raymond Hill 及贡献者。<a href="LICENSE.txt">GPL-3.0</a> · <a href="PRIVACY-SM.md">隐私说明</a> · <a href="https://github.com/uBlockOrigin/uBOL-home" target="_blank" rel="noopener">上游源码</a></footer>
+</section>
+</main>
+</div>
+<script type="module" src="sm/welcome.js"></script>
+</html>

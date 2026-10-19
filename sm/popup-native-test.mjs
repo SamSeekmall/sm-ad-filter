@@ -30,20 +30,16 @@ assert.match(metrics.state,/已开启保护/);assert.ok(metrics.width>=375&&metr
 const screenshot=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(out,'native-popup.png'),Buffer.from(screenshot.data,'base64'));
 const result={status:metrics.width>=375&&metrics.width<=400&&metrics.scrollWidth<=metrics.width?'PASS':'FAIL',browser:context.browser().version(),channel,entry:'chrome.action.openPopup() from extension page, engine preloaded; cold wake tested separately',timing,build:JSON.parse(await readFile('build/sm-ad-filter/SM-BUILD.json','utf8')),metrics};await writeFile(path.join(out,'native-popup.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 assert.equal(result.status,'PASS');assert.match(metrics.state,/已开启保护/);assert.ok(metrics.buttons.every(b=>b.width>=50&&b.height<=65));
-// Navigate through the real element-tools link and explicit return link.
-await send('Runtime.evaluate',{expression:"setTimeout(()=>document.querySelector('#elements').click(),0)"});
-async function waitExpression(expression){for(let i=0;i<150;i++){try{const r=await send('Runtime.evaluate',{expression,returnByValue:true});if(r.result.value)return;}catch(e){if(!/context|Cannot find/i.test(e.message))throw e;}await new Promise(r=>setTimeout(r,100));}throw Error('Navigation condition failed: '+expression);}
-await waitExpression("Boolean(document.querySelector('#smBack'))&&!document.body.classList.contains('loading')&&!document.body.classList.contains('busy')");
-const toolsShot=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(out,'element-tools.png'),Buffer.from(toolsShot.data,'base64'));
-const backRect=await send('Runtime.evaluate',{expression:"JSON.stringify((()=>{const r=document.querySelector('#smBack').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})())",returnByValue:true});
-const backPoint=JSON.parse(backRect.result.value);await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...backPoint});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...backPoint});
-await waitExpression("document.querySelector('#state')?.textContent.includes('已开启保护')&&!document.querySelector('#pause')?.disabled");
-result.navigation='elements -> explicit back -> ready PASS';
+async function waitExpression(expression){for(let i=0;i<150;i++){try{const r=await send('Runtime.evaluate',{expression,returnByValue:true});if(r.result.value)return;}catch(e){if(!/context|Cannot find/i.test(e.message))throw e;}await new Promise(r=>setTimeout(r,100));}throw Error('Condition failed: '+expression);}
+// Element tools live in the SM popup itself (no detour through the upstream popup).
+await waitExpression("['zap','pick'].every(id=>{const b=document.querySelector('#'+id);return b&&!b.disabled&&b.getClientRects().length>0;})");
+result.navigation='element tools rows present and enabled PASS';
 // Exercise native popup controls through the same renderer.
 await send('Runtime.evaluate',{expression:`document.querySelector('#modeDetails').open=true; document.querySelector('#mode').value='1';document.querySelector('#apply').click();`});
-for(let i=0;i<150;i++){const r=await send('Runtime.evaluate',{expression:`document.querySelector('#modeLabel').textContent==='基础'&&!document.querySelector('#pause').disabled`,returnByValue:true});if(r.result.value)break;if(i===149)throw Error('Mode UI did not apply');await new Promise(r=>setTimeout(r,100));}
+for(let i=0;i<150;i++){const r=await send('Runtime.evaluate',{expression:`document.querySelector('#modeLabel').textContent==='轻度'&&!document.querySelector('#pause').disabled`,returnByValue:true});if(r.result.value)break;if(i===149)throw Error('Mode UI did not apply');await new Promise(r=>setTimeout(r,100));}
 await send('Runtime.evaluate',{expression:`document.querySelector('#pause').click()`});
 for(let i=0;i<150;i++){const r=await send('Runtime.evaluate',{expression:`document.querySelector('#pauseLabel').textContent==='恢复保护'&&!document.querySelector('#pause').disabled`,returnByValue:true});if(r.result.value)break;if(i===149)throw Error('Pause UI did not apply');await new Promise(r=>setTimeout(r,100));}
+await waitExpression("!document.querySelector('#check').hidden&&document.querySelectorAll('#checkActions button').length===2&&/还剩 \\d+ 分钟/.test(document.querySelector('#detail').textContent)");
 await send('Runtime.evaluate',{expression:`document.querySelector('#pause').click()`});
 for(let i=0;i<150;i++){const r=await send('Runtime.evaluate',{expression:`document.querySelector('#state').textContent.includes('已开启保护')&&!document.querySelector('#pause').disabled`,returnByValue:true});if(r.result.value)break;if(i===149)throw Error('Resume UI did not apply');await new Promise(r=>setTimeout(r,100));}
 result.interactions='mode, pause and resume PASS';await writeFile(path.join(out,'native-popup.json'),JSON.stringify(result,null,2));

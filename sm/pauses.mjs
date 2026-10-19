@@ -2,6 +2,9 @@
 // previous subtree so it can be put back, but only if nobody changed that subtree in the meantime.
 import { hostname, related, subtree, mergeSubtree, canonical } from './core.mjs';
 
+// Fixed pause lengths; anything else lasts until the browser session ends.
+export const DURATIONS = { '10m': 600000, '1h': 3600000 };
+
 export function createPauses({ api, engine, read, write, now = () => Date.now(), uuid = () => crypto.randomUUID() }) {
     let session;
     const alarmName = host => `sm:pause:${host}`;
@@ -28,11 +31,13 @@ export function createPauses({ api, engine, read, write, now = () => Date.now(),
     async function start(host, duration) {
         await cancelOverlapping(host);
         const before = subtree(await engine({ what: 'getFilteringModeDetails' }), host);
-        if ((await engine({ what: 'getFilteringMode', hostname: host })) === 0) throw new Error('此站点已处于不过滤模式，无需临时暂停');
+        const level = await engine({ what: 'getFilteringMode', hostname: host });
+        if (level === 0) throw new Error('此站点已处于不过滤模式，无需临时暂停');
         const after = { none: [host], basic: [], optimal: [], complete: [] };
-        const until = duration === '10m' ? now() + 600000 : null;
+        const until = DURATIONS[duration] ? now() + DURATIONS[duration] : null;
         const pauses = await read('sm.pauses', {});
-        pauses[host] = { before, after, until, session };
+        // `level` is the mode before the pause: the popup shows it as "after resume" instead of "不过滤".
+        pauses[host] = { before, after, until, session, level };
         await write('sm.pauses', pauses);
         if (until) await api.alarms.create(alarmName(host), { when: until });
         const current = await engine({ what: 'getFilteringModeDetails' });

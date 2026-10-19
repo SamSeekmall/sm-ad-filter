@@ -1,0 +1,18 @@
+/* SM 净览 design tokens: one source for the popup, the control center and the upstream overrides. */
+:root{
+  --sm-brand:#14715c;--sm-brand-hover:#0e5e4d;--sm-brand-soft:#e7f2ee;--sm-on-brand:#ffffff;
+  --sm-ink:#132520;--sm-muted:#56685f;--sm-line:#d5e1dc;--sm-control-line:#6f9a8b;
+  --sm-bg:#f5f8f7;--sm-surface:#ffffff;--sm-surface-2:#eef3f1;
+  --sm-warn:#8b5a17;--sm-warn-soft:#fbf1e1;--sm-error:#a32626;--sm-error-soft:#fdeeee;
+  --sm-disabled-ink:#7d8984;--sm-disabled-bg:#e4e9e7;
+  --sm-focus:#b8750e;
+  --sm-radius-s:8px;--sm-radius-m:12px;--sm-radius-l:16px;
+  --sm-font:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --sm-brand:#3fae8c;--sm-brand-hover:#5cc4a3;--sm-brand-soft:#173a30;--sm-on-brand:#0d1a16;
+  --sm-ink:#e4eee9;--sm-muted:#a9bdb4;--sm-line:#30473f;--sm-control-line:#6c8f82;
+  --sm-bg:#101c19;--sm-surface:#172723;--sm-surface-2:#1e322c;
+  --sm-warn:#f0b86a;--sm-warn-soft:#3a2d18;--sm-error:#ff9d94;--sm-error-soft:#3d2121;
+  --sm-disabled-ink:#7f918a;--sm-disabled-bg:#24342f;
+}}
