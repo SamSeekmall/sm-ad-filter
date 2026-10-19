@@ -40,6 +40,6 @@ try {
         Copy-Item "build/qa-native-$channel/native-popup.png" -Destination (Join-Path $output "native-popup-$channel.png")
     }
     $hashes = @($extensionZip,$sourceZip) | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path
-    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion='0.3.1 / c1eb668';hashes=$hashes;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
+    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion='0.4.0 / f0a05f3';hashes=$hashes;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
     Get-ChildItem -LiteralPath $output | Select-Object Name,Length
 } finally { Pop-Location }

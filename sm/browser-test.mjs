@@ -50,6 +50,9 @@ try{
     await launch();
     await scenario('UI, Chinese rules, and permissions diagnostics',async()=>{
         await page.bringToFront();
+        await page.locator('#site').fill('');await page.locator('#site').press('Enter');await page.waitForFunction(()=>!document.querySelector('#checkSite').disabled);await page.locator('#siteStatus').filter({hasText:'输入网站后'}).waitFor();assert.equal(await page.locator('#setMode').isDisabled(),true);
+        await page.locator('#site').fill('localhost');await page.locator('#site').press('Enter');await page.waitForFunction(()=>!document.querySelector('#checkSite').disabled);await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();assert.equal(await page.locator('#pause10').isEnabled(),true);assert.equal(await page.locator('#setMode').isDisabled(),true);
+        await page.locator('#mode').selectOption('3');assert.equal(await page.locator('#setMode').isEnabled(),true);await page.locator('#mode').selectOption('2');
         if(await page.locator('#recommended').isEnabled()){await page.locator('#recommended').click();await page.locator('.actionStatus').filter({hasText:'操作完成'}).first().waitFor();}
         const status=await sm('sm:status',{hostname:'localhost'});assert.ok(status.enabledRulesets.includes('chn-0'));assert.equal(status.hasAccess,true);
         await page.screenshot({path:path.join(qa,'01-control-center.png'),fullPage:true});

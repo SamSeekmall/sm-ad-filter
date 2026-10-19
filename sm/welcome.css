@@ -13,3 +13,5 @@ html.smPopup,.popup{width:380px;min-width:380px;max-width:none}.popup main{paddi
 @media(max-width:620px){main{padding:18px 14px}.panel{padding:18px}.hero{padding-top:12px}.hero h1{font-size:26px}nav{gap:14px;margin-top:16px}}
 @media(prefers-color-scheme:dark){.actionStatus{background:#193a2c;color:#c1ead2}.actionStatus[data-state=error]{background:#422525;color:#ffd4cf}.actionStatus[data-state=loading]{background:#3a321d;color:#ffdfa1}}
 @media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+
+[hidden]{display:none!important}.help{margin:8px 0;color:inherit}.help summary{font-size:14px;font-weight:500}.help p{margin:6px 0}#siteActions{padding-top:8px;border-top:1px solid #cbded7}#siteActions label{display:flex;gap:10px;align-items:center;margin:0}#siteActions button{padding:10px 14px}.actionStatus:empty{display:none}

@@ -15,7 +15,12 @@ function download(name, data, type='application/json') {
 }
 function actionState() {
     if(!current)return;
-    $('#resume').disabled=!current.pauses[current.hostname];
+    let selected=false;try{selected=host()===current.hostname;}catch{}
+    const valid=Boolean(current.hostname)&&selected, paused=Boolean(current.pauses[current.hostname]);
+    for(const id of ['mode','setMode','pause10','pauseSession','resume'])$('#'+id).disabled=!valid;
+    $('#resume').hidden=!paused;$('#resume').disabled=!valid||!paused;
+    $('#pause10').hidden=$('#pauseSession').hidden=paused;
+    $('#setMode').disabled=!valid||Number($('#mode').value)===current.level;
     $('#recommended').disabled=['chn-0','easylist','easyprivacy'].every(id=>current.enabledRulesets.includes(id));
     $('#recommended').textContent=$('#recommended').disabled?'推荐规则已启用':'启用推荐规则';
     $('#sendReport').disabled=!(current.repository||current.release.repository)||!$('#report').value;
@@ -27,9 +32,9 @@ async function run(button, fn) {
     if(!note){note=document.createElement('p');note.className='actionStatus';note.setAttribute('role','status');note.setAttribute('aria-live','polite');}
     const anchor=button.closest('.actions')||button;
     if(button.id==='saveRepository')$('#repository').removeAttribute('aria-invalid');
-    anchor.after(note);note.id=`status-${button.id||'action'}`;button.setAttribute('aria-describedby',note.id);
+    anchor.after(note);note.hidden=false;note.id=`status-${button.id||'action'}`;button.setAttribute('aria-describedby',note.id);
     button.disabled=true;button.setAttribute('aria-busy','true');note.dataset.state='loading';note.textContent='正在处理…';
-    try { await fn(); note.dataset.state='success';note.textContent='操作完成。'; }
+    try { await fn(); note.dataset.state='success';note.textContent='操作完成。';if(button.id==='refresh'||button.id==='checkSite')note.hidden=true; }
     catch(error) {
         note.dataset.state='error';note.textContent=`未完成：${error.message}`;
         const field=button.id==='saveRepository'?$('#repository'):['checkSite','setMode','pause10','pauseSession'].includes(button.id)?$('#site'):null;
@@ -42,7 +47,7 @@ function on(id, fn) { $(id).addEventListener('click',event=>run(event.currentTar
 function host() { return hostname($('#site').value); }
 async function refresh() {
     current = await send('sm:status', $('#site').value.trim() ? {hostname:host()} : {});
-    $('#version').textContent = `${current.release.productVersion} · ${current.release.channel}`;
+    $('#version').textContent = `v${current.release.productVersion}`;
     $('#status').textContent = `默认：${modeNames[current.defaultFilteringMode]} · 已启用 ${current.enabledRulesets.length} 组规则 · 中文规则${current.enabledRulesets.includes('chn-0')?'已开启':'未开启'}`;
     list($('#diagnostics'),[
         `网站访问权限：${current.hasAccess?'可用':'不足，请在扩展详情中检查网站访问权限'}`,
@@ -50,7 +55,7 @@ async function refresh() {
         `规则引擎：已返回配置。此状态不等于所有广告都能过滤。`,
         ...(current.startError ? [`后台恢复提示：${current.startError}`] : []),
     ]);
-    $('#siteStatus').textContent = current.hostname ? `${current.hostname}：${modeNames[current.level]}` : '请从网站工具栏打开，或在上方输入网站';
+    $('#siteStatus').textContent = current.hostname ? `${current.hostname} · ${current.pauses[current.hostname]?'已暂停':modeNames[current.level]}` : '输入网站后，可调整过滤或临时暂停。';
     $('#mode').value=String(current.level);
     $('#cookies').checked=current.cookieReject;
     $('#cookieResult').textContent=current.cookies ? `${current.cookies.provider}：${current.cookies.result}（${date(current.cookies.time)}）` : '此站点暂无自动拒绝记录；隐藏弹窗不代表已拒绝同意。';
@@ -88,6 +93,8 @@ async function preview(data) {
     $('#preview').textContent=`备份时间：${pending.createdAt}\n规则组 ${s.lists} · 站点例外 ${s.sites} · 自定义规则 ${s.custom}\n外部订阅 ${s.subscriptions} · 高级规则 ${s.advanced?'有（请确认来源）':'无'}\n将替换当前配置，操作前保留本地恢复快照。\n站点例外：${JSON.stringify(pending.settings.filteringModes,null,2)}\n规则列表：${pending.settings.enabledRulesets.join(', ')}`;
 }
 on('#refresh',refresh);on('#checkSite',refresh);
+$('#site').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('#checkSite').click();}});
+$('#site').addEventListener('input',actionState);$('#mode').addEventListener('change',actionState);
 on('#recommended',async()=>{await send('sm:preset',{preset:'recommended'});await refresh();});
 on('#quiet',async()=>{await send('sm:preset',{preset:'quiet'});await refresh();});
 on('#setMode',async()=>{await send('sm:setMode',{hostname:host(),level:Number($('#mode').value)});await refresh();});

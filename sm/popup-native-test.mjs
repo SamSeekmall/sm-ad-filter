@@ -28,6 +28,14 @@ assert.match(metrics.state,/已开启保护/);assert.ok(metrics.width>=375&&metr
 const screenshot=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(out,'native-popup.png'),Buffer.from(screenshot.data,'base64'));
 const result={status:metrics.width>=375&&metrics.width<=400&&metrics.scrollWidth<=metrics.width?'PASS':'FAIL',browser:context.browser().version(),channel,entry:'chrome.action.openPopup()',timing,build:JSON.parse(await readFile('build/sm-ad-filter/SM-BUILD.json','utf8')),metrics};await writeFile(path.join(out,'native-popup.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 assert.equal(result.status,'PASS');assert.match(metrics.state,/已开启保护/);assert.ok(metrics.buttons.every(b=>b.width>=50&&b.height<=65));
+// Navigate through the real element-tools link and explicit return link.
+await send('Runtime.evaluate',{expression:"setTimeout(()=>document.querySelector('#elements').click(),0)"});
+async function waitExpression(expression){for(let i=0;i<150;i++){try{const r=await send('Runtime.evaluate',{expression,returnByValue:true});if(r.result.value)return;}catch(e){if(!/context|Cannot find/i.test(e.message))throw e;}await new Promise(r=>setTimeout(r,100));}throw Error('Navigation condition failed: '+expression);}
+await waitExpression("Boolean(document.querySelector('#smBack'))");
+const toolsShot=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(out,'element-tools.png'),Buffer.from(toolsShot.data,'base64'));
+await send('Runtime.evaluate',{expression:"setTimeout(()=>document.querySelector('#smBack').click(),0)"});
+await waitExpression("document.querySelector('#state')?.textContent.includes('已开启保护')&&!document.querySelector('#pause')?.disabled");
+result.navigation='elements -> explicit back -> ready PASS';
 // Exercise native popup controls through the same renderer.
 await send('Runtime.evaluate',{expression:`document.querySelector('#modeDetails').open=true; document.querySelector('#mode').value='1';document.querySelector('#apply').click();`});
 for(let i=0;i<150;i++){const r=await send('Runtime.evaluate',{expression:`document.querySelector('#modeLabel').textContent==='基础'&&!document.querySelector('#pause').disabled`,returnByValue:true});if(r.result.value)break;if(i===149)throw Error('Mode UI did not apply');await new Promise(r=>setTimeout(r,100));}
