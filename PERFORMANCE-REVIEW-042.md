@@ -19,3 +19,5 @@
 先运行 npm ci --prefix sm/build-tools，再运行 node sm/build.mjs。包内 sm/BUNDLE.json 记录模块数量与构建产物。所有运行代码均在本地包内。
 
 参考：[Chrome 扩展后台模块约束](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/basics)、[esbuild 构建 API](https://esbuild.github.io/api/#bundle)、[CDP ServiceWorker](https://chromedevtools.github.io/devtools-protocol/tot/ServiceWorker/)。
+
+原生功能脚本也改为从扩展页面调用打开，避免通过正在初始化的 worker 发起。该脚本明确预热，仅验证交互；后台停止后的唤醒由单独基准验证。

@@ -10,9 +10,10 @@ let context;
 try{
 context=await chromium.launchPersistentContext(path.resolve(`build/qa/native-popup-${channel}-${crypto.randomUUID()}`),{channel,headless:true,args:[`--disable-extensions-except=${path.resolve('build/sm-ad-filter')}`,`--load-extension=${path.resolve('build/sm-ad-filter')}`,'--host-resolver-rules=MAP example.com 127.0.0.1','--no-proxy-server']});
 const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
+const driver=await context.newPage();await driver.goto(`chrome-extension://${new URL(worker.url()).host}/welcome.html`);await driver.bringToFront();await driver.locator('#status-refresh[data-state=success]').waitFor({state:'attached',timeout:60000});
 const page=await context.newPage();await page.goto(`http://example.com:${server.address().port}`);await page.bringToFront();
 const cdp=await context.browser().newBrowserCDPSession();
-const openedAt=performance.now();await worker.evaluate(()=>chrome.action.openPopup());const openAckMs=performance.now()-openedAt;
+const openedAt=performance.now();await driver.evaluate(()=>chrome.action.openPopup());const openAckMs=performance.now()-openedAt;
 const target=(await cdp.send('Target.getTargets')).targetInfos.find(t=>t.url.endsWith('/sm/popup.html'));assert.ok(target,'native toolbar popup target');
 const {sessionId}=await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:false});
 let nextId=0;const pending=new Map();
@@ -26,7 +27,7 @@ for(let i=0;i<150;i++){
 const stateObservedMs=performance.now()-openedAt;const timingResult=await send('Runtime.evaluate',{expression:'JSON.stringify({paint:performance.getEntriesByType("paint").map(x=>({name:x.name,ms:x.startTime})),marks:performance.getEntriesByType("mark").map(x=>({name:x.name,ms:x.startTime})),domReady:performance.getEntriesByType("navigation")[0]?.domContentLoadedEventEnd})',returnByValue:true});const timing={openAckMs,stateObservedMs,page:JSON.parse(timingResult.result.value)};
 assert.match(metrics.state,/已开启保护/);assert.ok(metrics.width>=375&&metrics.width<=400&&metrics.scrollWidth<=metrics.width);
 const screenshot=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(out,'native-popup.png'),Buffer.from(screenshot.data,'base64'));
-const result={status:metrics.width>=375&&metrics.width<=400&&metrics.scrollWidth<=metrics.width?'PASS':'FAIL',browser:context.browser().version(),channel,entry:'chrome.action.openPopup()',timing,build:JSON.parse(await readFile('build/sm-ad-filter/SM-BUILD.json','utf8')),metrics};await writeFile(path.join(out,'native-popup.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+const result={status:metrics.width>=375&&metrics.width<=400&&metrics.scrollWidth<=metrics.width?'PASS':'FAIL',browser:context.browser().version(),channel,entry:'chrome.action.openPopup() from extension page, engine preloaded; cold wake tested separately',timing,build:JSON.parse(await readFile('build/sm-ad-filter/SM-BUILD.json','utf8')),metrics};await writeFile(path.join(out,'native-popup.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 assert.equal(result.status,'PASS');assert.match(metrics.state,/已开启保护/);assert.ok(metrics.buttons.every(b=>b.width>=50&&b.height<=65));
 // Navigate through the real element-tools link and explicit return link.
 await send('Runtime.evaluate',{expression:"setTimeout(()=>document.querySelector('#elements').click(),0)"});
