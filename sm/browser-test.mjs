@@ -111,6 +111,53 @@ try{
         await reloadAction(()=>sm('sm:pause',{hostname:'localhost',duration:'session'}));await context.close();await launch();
         assert.equal((await sm('sm:status',{hostname:'localhost'})).level,2);assert.deepEqual((await sm('sm:status')).pauses,{});
     });
+    await scenario('Rule editor and upstream settings share the SM write queue (real engine)',async()=>{
+        const editor=await page.evaluate(async id=>(await fetch(`chrome-extension://${id}/js/rw-dnr-editor.js`)).text(),id);
+        assert.ok(editor.includes("sm:setUserDnrRules")&&!editor.includes("localWrite('userDnrRules'"),'rule editor must not write storage itself');
+        const before=(await sm('sm:history')).length;
+        const feedback=await sm('sm:setUserDnrRules',{text:'  ||qa-advanced-rule.invalid^$important  '});assert.ok(feedback===undefined||typeof feedback==='object');
+        assert.equal((await page.evaluate(()=>chrome.storage.local.get('userDnrRules'))).userDnrRules,'||qa-advanced-rule.invalid^$important');
+        assert.equal((await sm('sm:history')).length,before+1);
+        await sm('sm:setUserDnrRules',{text:''});assert.equal('userDnrRules' in await page.evaluate(()=>chrome.storage.local.get('userDnrRules')),false);
+        const history=(await sm('sm:history')).length;
+        await upstream('setAutoReload',{state:false});assert.equal((await sm('sm:status')).autoReload,false);assert.equal((await sm('sm:history')).length,history+1);
+        await sm('sm:undo');assert.equal((await sm('sm:status')).autoReload,true);
+        await sm('sm:undo');   // the rule-editor clear
+    });
+    await scenario('Worker stopped mid-import is rolled back at the next start (real engine)',async()=>{
+        const original=await sm('sm:snapshot');
+        await upstream('setAutoReload',{state:false});             // half-applied import
+        await page.evaluate(snapshot=>chrome.storage.local.set({'sm.recovery':snapshot,'sm.pendingRollback':{what:'restore',stage:'applying',envelope:{pauses:{}},startedAt:Date.now(),targetFp:'0'.repeat(64)}}),original);
+        const cdp=await context.newCDPSession(page);let stopped=false;
+        cdp.on('ServiceWorker.workerVersionUpdated',e=>{if(e.versions.some(v=>v.scriptURL.includes(id)&&v.runningStatus==='stopped'))stopped=true;});
+        await cdp.send('ServiceWorker.enable');await cdp.send('ServiceWorker.stopAllWorkers');
+        for(let n=0;n<100&&!stopped;n++)await new Promise(r=>setTimeout(r,50));assert.ok(stopped,'worker stopped');
+        const status=await sm('sm:status');                       // wakes a fresh worker, which reconciles first
+        assert.equal(status.autoReload,true,'configuration restored');
+        assert.equal(status.notice?.kind,'rolledBack');
+        assert.equal('sm.pendingRollback' in await page.evaluate(()=>chrome.storage.local.get('sm.pendingRollback')),false);
+        await sm('sm:ackNotice');assert.equal((await sm('sm:status')).notice,null);
+        await cdp.detach();
+    });
+    await scenario('Control center: first-use checklist, site recovery wizard, interrupted-operation notice',async()=>{
+        await page.goto(`chrome-extension://${id}/welcome.html`);await page.evaluate(()=>localStorage.removeItem('sm.startDismissed'));await page.reload();
+        await page.locator('#status').filter({hasText:'默认：'}).waitFor();
+        await page.locator('#start').waitFor({state:'visible'});assert.match(await page.locator('#startChecks').innerText(),/网站访问权限：可用/);
+        await page.locator('#startDone').click();await page.locator('#start').waitFor({state:'hidden'});
+        await page.locator('#site').fill('localhost');await page.locator('#site').press('Enter');await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();
+        await page.locator('#wizard summary').click();
+        await page.locator('#wizStart').click();await page.locator('#wizFixed').waitFor();
+        assert.ok((await sm('sm:status',{hostname:'localhost'})).pauses.localhost,'wizard step 1 paused the site');
+        await page.locator('#wizFixed').click();await page.locator('#wizLower').click();await page.locator('#wizDone').waitFor();
+        assert.equal(await upstream('getFilteringMode',{hostname:'localhost'}),1,'wizard lowered one level');
+        assert.deepEqual((await sm('sm:status')).pauses,{},'lowering ended the pause');
+        await page.locator('#wizDone').click();await page.getByText('排查结束').waitFor();
+        await sm('sm:setMode',{hostname:'localhost',level:2});
+        await page.evaluate(()=>chrome.storage.local.set({'sm.notice':{kind:'rolledBack',what:'sm:restore',message:'测试：上次导入被中断，已自动恢复。',time:Date.now()}}));
+        await page.locator('#refresh').click();await page.locator('#notice').filter({hasText:'上次导入被中断'}).waitFor();
+        await page.locator('#ackNotice').click();await page.locator('#notice').filter({hasText:'上次导入被中断'}).waitFor({state:'detached'});
+        await page.screenshot({path:path.join(qa,'05-control-first-use.png'),fullPage:true});
+    });
     await scenario('Popup and owned feedback entry',async()=>{
         await page.goto(`chrome-extension://${id}/sm/popup.html`);await page.locator('#center').waitFor();await page.screenshot({path:path.join(qa,'03-popup.png')});
         await page.goto(`chrome-extension://${id}/report.html`);await page.waitForURL('**/welcome.html#feedback');

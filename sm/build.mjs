@@ -1,16 +1,57 @@
 // Deterministic overlay on pinned upstream. GPL-3.0-or-later.
-import { cp, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
+// Builds into a fresh staging directory, verifies it, and only then replaces build/sm-ad-filter,
+// so a failed build never leaves a mixed or half-written package behind.
+import { cp, mkdir, readFile, writeFile, readdir, rm, rename, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(root, 'build', 'sm-ad-filter');
+const args = new Set(process.argv.slice(2));
+const finalOut = path.join(root, 'build', 'sm-ad-filter');
+const out = path.join(root, 'build', `.staging-${process.pid}`);
 const {build:bundle} = await import('./build-tools/node_modules/esbuild/lib/main.js');
 const release = JSON.parse(await readFile(path.join(root,'sm/release.json'),'utf8'));
-await mkdir(out,{recursive:true});
+const sha = data => createHash('sha256').update(data).digest('hex');
+const textual = /\.(js|mjs|json|html|css|md|txt|svg)$/i;
+// CRLF checkouts must hash like LF ones; binaries are hashed as stored.
+const fileDigest = async file => { const data = await readFile(file); return sha(textual.test(file) ? Buffer.from(data.toString('utf8').replaceAll('\r\n','\n')) : data); };
+async function walkFiles(dir, base = dir) {
+    const found = [];
+    for (const item of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : 1)) {
+        const file = path.join(dir, item.name);
+        if (item.isDirectory()) found.push(...await walkFiles(file, base));
+        else found.push(path.relative(base, file).split(path.sep).join('/'));
+    }
+    return found;
+}
+async function treeDigest(dir) {
+    const lines = [];
+    for (const rel of await walkFiles(dir)) lines.push(`${rel}\0${await fileDigest(path.join(dir, rel))}`);
+    return { files: lines.length, treeSha256: sha(lines.join('\n')) };
+}
+// 1. The vendored upstream tree must be exactly the reviewed one. Edits to chromium/ belong in sm/build.mjs patches.
+const lockPath = path.join(root, 'sm/upstream-lock.json');
+const upstream = await treeDigest(path.join(root, 'chromium'));
+if (args.has('--update-lock')) {
+    await writeFile(lockPath, JSON.stringify({ upstreamCommit: release.upstreamCommit, engineVersion: release.engineVersion, ...upstream }, null, 2) + '\n');
+    console.log('upstream lock updated', upstream);
+}
+const lock = JSON.parse(await readFile(lockPath, 'utf8'));
+if (lock.upstreamCommit !== release.upstreamCommit || lock.engineVersion !== release.engineVersion || lock.treeSha256 !== upstream.treeSha256 || lock.files !== upstream.files) {
+    throw new Error(`Upstream tree differs from sm/upstream-lock.json (expected ${lock.files} files ${lock.treeSha256.slice(0,12)}, found ${upstream.files} files ${upstream.treeSha256.slice(0,12)}). Review the change, then run: node sm/build.mjs --update-lock`);
+}
+// 2. Toolchain: record what actually built the bundle; the release script can require the lockfile pin.
+const esbuildVersion = JSON.parse(await readFile(path.join(root, 'sm/build-tools/node_modules/esbuild/package.json'), 'utf8')).version;
+const pinnedEsbuild = JSON.parse(await readFile(path.join(root, 'sm/build-tools/package.json'), 'utf8')).dependencies.esbuild;
+const toolchain = { esbuild: esbuildVersion, esbuildPinned: pinnedEsbuild, esbuildMatchesPin: esbuildVersion === pinnedEsbuild, node: process.version };
+if (!toolchain.esbuildMatchesPin && process.env.SM_REQUIRE_PINNED_ESBUILD === '1') throw new Error(`esbuild ${esbuildVersion} does not match the lockfile pin ${pinnedEsbuild}`);
+await rm(out, { recursive: true, force: true });
+await mkdir(out, { recursive: true });
+try {
 await cp(path.join(root,'chromium'),out,{recursive:true});
 await mkdir(path.join(out,'sm'),{recursive:true});
-for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
 // Inline only local styles and official Tabler icon nodes: no blocking stylesheet/icon requests.
 const iconNodes = JSON.parse(await readFile(path.join(root,'sm/icons/tabler.json'),'utf8'));
 let popup = await readFile(path.join(root,'sm/popup.html'),'utf8');
@@ -31,14 +72,19 @@ manifest.action.default_popup = 'sm/popup.html';
 manifest.optional_permissions = [...new Set([...(manifest.optional_permissions || []),'declarativeNetRequestFeedback'])];
 manifest.content_scripts = [...(manifest.content_scripts || []),{matches:['http://*/*','https://*/*'],js:['sm/cookies.js'],run_at:'document_idle'}];
 await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
-async function patch(file,needle,replacement) {
+const contract = [];
+// Every upstream seam: the needle must occur exactly `count` times, so a changed upstream fails loudly
+// instead of being patched in the wrong place (or only the first of several places).
+async function patch(file,needle,replacement,purpose = '',count = 1) {
     const target = path.join(out,file); const text = (await readFile(target,'utf8')).replaceAll('\r\n','\n');
-    if (!text.includes(needle)) throw new Error(`Upstream changed: ${file}`);
-    await writeFile(target,text.replace(needle,replacement));
+    const found = text.split(needle).length - 1;
+    if (found !== count) throw new Error(`Upstream changed: ${file} (patch "${purpose || needle.slice(0,40)}" matched ${found}x, expected ${count}x)`);
+    await writeFile(target,text.replace(needle,() => replacement));
+    contract.push({ file, purpose, matches: found, needleSha256: sha(needle).slice(0,16) });
 }
 await patch('js/background.js',"return runtime.getManifest().version;",`return '${release.engineVersion}'; // SM engine migration version`);
 await patch('js/background.js',"runtime.onMessage.addListener((request, sender, callback) => {",`const smController = createController(onMessage, isFullyInitialized, smRulesFromText);\nruntime.onMessage.addListener((request, sender, callback) => {`);
-await patch('js/background.js',"onMessage(request, sender).then(callback);","smController.wrap(request, sender).then(callback, error => callback({ smError: error.message }));");
+await patch('js/background.js',"onMessage(request, sender).then(callback);","smController.wrap(request, sender).then(callback, error => callback({ smError: error.message }));",'extension-page message listener only; the userScripts listener (second match) deliberately stays unwrapped',2);
 await patch('js/background.js',"import { deferredTasks }", "import { createController } from '../sm/worker.mjs';\nimport { rulesFromText as smRulesFromText } from './dnr-parser.js';\nimport { deferredTasks }");
 await patch('js/backup-restore.js','manifest.versionName ?? manifest.version','manifest.version_name ?? manifest.version');
 await patch('popup.html','<main>', '<main><nav class="smToolsNav" aria-label="元素工具导航"><a id="smBack" href="sm/popup.html">← 返回</a><strong>元素工具</strong></nav>');
@@ -59,6 +105,8 @@ await patch('js/offscreen/fetch-list.js', '    const response = await fetch(url)
     if (staged) return staged.content !== undefined ? {url,content:staged.content} : {url,error:staged.error || '订阅文件未下载，保留旧规则'};
     const response = await fetch(url,{signal:AbortSignal.timeout(15000)}).catch(( ) => { });`);
 await patch('js/offscreen/fetch-list.js', "import * as sfp", "const browser = self.browser || self.chrome;\nimport * as sfp");
+await patch('js/rw-dnr-editor.js',"        await (text.length !== 0\n            ? localWrite('userDnrRules', text)\n            : localRemove('userDnrRules')\n        );\n        const response = await sendMessage({ what: 'updateUserDnrRules' })","        const reply = await sendMessage({ what: 'sm:setUserDnrRules', text });\n        if ( reply?.ok !== true ) { throw new Error(reply?.error || '高级网络规则保存失败'); }\n        const response = reply.data;",'rule editor saves through the SM write queue');
+await patch('js/backup-restore.js',"    if ( dnrRules.length !== 0 ) {\n        await localWrite('userDnrRules', dnrRules.join('\\n'));\n    } else {\n        await localRemove('userDnrRules');\n    }\n    await sendMessage({ what: 'updateUserDnrRules' });","    const smReply = await sendMessage({ what: 'sm:setUserDnrRules', text: dnrRules.join('\\n') });\n    if ( smReply?.ok !== true ) { throw new Error(smReply?.error || '高级网络规则保存失败'); }",'upstream restore writes advanced rules through the SM write queue');
 for (const dir of await readdir(path.join(out,'_locales'))) {
     const file = path.join(out,'_locales',dir,'messages.json');
     const strings = JSON.parse(await readFile(file,'utf8'));
@@ -69,13 +117,24 @@ for (const dir of await readdir(path.join(out,'_locales'))) {
 await writeFile(path.join(out,'report.html'),'<!doctype html><meta charset="utf-8"><title>SM 净览反馈</title><a href="welcome.html#feedback">打开 SM 净览反馈中心</a><script type="module" src="sm/report-redirect.js"></script>');
 await writeFile(path.join(out,'sm/report-redirect.js'),"location.replace(chrome.runtime.getURL('welcome.html#feedback'));\n");
 // Resolve the worker graph at build time, not on each service-worker startup.
-const bundled=await bundle({entryPoints:[path.join(out,'js/background.js')],outfile:path.join(out,'js/background.bundle.js'),bundle:true,format:'esm',platform:'browser',target:'chrome120',minify:false,legalComments:'inline',metafile:true});
+const bundled=await bundle({absWorkingDir:out,entryPoints:[path.join(out,'js/background.js')],outfile:path.join(out,'js/background.bundle.js'),bundle:true,format:'esm',platform:'browser',target:'chrome120',minify:false,legalComments:'inline',metafile:true});
 if(Object.values(bundled.metafile.outputs).some(x=>x.imports.length))throw Error('Worker bundle has unresolved imports');
 manifest.background.service_worker='js/background.bundle.js';
 await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
-await writeFile(path.join(out,'sm/BUNDLE.json'),JSON.stringify({tool:'esbuild 0.25.12',inputModules:Object.keys(bundled.metafile.inputs).length,outputs:bundled.metafile.outputs},null,2));
-let localCommit = 'source-archive';
-try { localCommit = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); } catch { }
-await writeFile(path.join(out,'SM-BUILD.json'),JSON.stringify({...release,localCommit,license:'GPL-3.0-or-later',upstream:'https://github.com/uBlockOrigin/uBOL-home',modifications:'sm/ overlay; engine version separation; imported-list refresh recovery; localized branding and owned feedback'},null,2)+'\n');
+await writeFile(path.join(out,'sm/BUNDLE.json'),JSON.stringify({tool:`esbuild ${esbuildVersion}`,inputModules:Object.keys(bundled.metafile.inputs).length,outputs:bundled.metafile.outputs},null,2));
+let localCommit = process.env.SM_LOCAL_COMMIT || 'source-archive';
+if (!process.env.SM_LOCAL_COMMIT) try { localCommit = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); } catch { }
+await writeFile(path.join(out,'SM-BUILD.json'),JSON.stringify({...release,localCommit,license:'GPL-3.0-or-later',upstream:'https://github.com/uBlockOrigin/uBOL-home',upstreamTree:upstream,toolchain,upstreamSeams:contract,modifications:'sm/ overlay; engine version separation; imported-list refresh recovery; localized branding and owned feedback; advanced-rule edits routed through the SM write queue'},null,2)+'\n');
 for (const file of ['README-SM.md','QA-SM.md','PRIVACY-SM.md','RELEASE-SM.md','FEATURES-SM.md']) await cp(path.join(root,file),path.join(out,file));
-console.log(out);
+// Exact file set + digests: verify.mjs rejects stale leftovers and silent substitutions.
+const listed = {};
+for (const rel of await walkFiles(out)) { const info = await stat(path.join(out, rel)); listed[rel] = { bytes: info.size, sha256: sha(await readFile(path.join(out, rel))) }; }
+await writeFile(path.join(out,'SM-FILES.json'),JSON.stringify({ files: Object.keys(listed).length, entries: listed },null,2)+'\n');
+// Replace the previous package only now that the new one is complete.
+await rm(finalOut, { recursive: true, force: true });
+await rename(out, finalOut);
+console.log(finalOut);
+} catch (error) {
+    await rm(out, { recursive: true, force: true });
+    throw error;
+}

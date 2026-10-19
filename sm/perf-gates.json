@@ -1,0 +1,11 @@
+{
+  "status": "UNCALIBRATED_PROPOSAL",
+  "note": "Initial targets proposed by the 2026-10-19 architecture review. They are not measured capabilities and have not been calibrated on a reference device. Recalibrate from >=100 samples per group per browser, then change status to CALIBRATED with the device named.",
+  "maxFailureRate": 0,
+  "minimumSamples": { "warm": 100, "wake": 100, "restart": 10 },
+  "limits": {
+    "warm": { "p95Ms": 1000, "maxMs": 3000 },
+    "wake": { "p95Ms": 2000, "maxMs": 5000 },
+    "restart": { "p95Ms": 3000, "maxMs": 8000 }
+  }
+}

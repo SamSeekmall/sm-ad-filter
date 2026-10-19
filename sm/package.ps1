@@ -1,4 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$OutputDirectory)
+param(
+    [Parameter(Mandatory=$true)][string]$OutputDirectory,
+    # Packaging with a performance gate that is not MET needs a written reason; it is recorded in the receipt.
+    [string]$PerformanceWaiver = ''
+)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $repoRoot
@@ -6,6 +10,14 @@ try {
     if (git status --porcelain) { throw 'Commit source and QA records before packaging.' }
     $version = Get-Content sm/release.json -Raw | ConvertFrom-Json
     $commit = (git rev-parse HEAD).Trim()
+    foreach ($test in @('worker','updates','welcome','perf-stats')) {
+        node --test "sm/$test.test.mjs"
+        if ($LASTEXITCODE -ne 0) { throw "Logic tests failed: $test" }
+    }
+    # Release builds must use the esbuild version pinned in the lockfile, and must be reproducible.
+    $env:SM_REQUIRE_PINNED_ESBUILD = '1'
+    node sm/determinism.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'Build is not deterministic' }
     node sm/build.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
     node sm/verify.mjs
@@ -20,10 +32,14 @@ try {
         $native = Get-Content "build/qa-native-$channel/native-popup.json" -Raw | ConvertFrom-Json
         if ($native.status -ne 'PASS' -or $native.build.localCommit -ne $commit) { throw "Missing native popup verification: $channel" }
     }
-    foreach ($channel in @('chromium','msedge')) {
-        $timing = Get-Content "build/qa-popup-performance-$channel/native-timing.json" -Raw | ConvertFrom-Json
-        $currentRun = $timing.runs | Where-Object label -eq 'current'
-        if ($timing.status -ne 'COMPLETE' -or $currentRun.build.localCommit -ne $commit) { throw "Missing popup timing verification: $channel" }
+    # Popup latency: COMPLETE only means the harness finished. The gate needs enough samples, no failures, and limits met.
+    $gateReceipt = Join-Path ([System.IO.Path]::GetTempPath()) ("sm-perf-gate-" + [guid]::NewGuid().ToString('N') + '.json')
+    node sm/perf-gate.mjs build/qa-popup-performance-chromium/native-timing.json build/qa-popup-performance-msedge/native-timing.json --commit $commit --out $gateReceipt
+    $gateExit = $LASTEXITCODE
+    $performanceGate = 'MET'
+    if ($gateExit -ne 0) {
+        if ([string]::IsNullOrWhiteSpace($PerformanceWaiver)) { throw 'Popup performance gate is not MET (see output above). Fix it, collect more samples, or pass -PerformanceWaiver with a reason.' }
+        $performanceGate = "WAIVED: $PerformanceWaiver"
     }
     if (Test-Path -LiteralPath $OutputDirectory) { throw 'Output directory already exists; preserve the previous release.' }
     New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
@@ -33,7 +49,7 @@ try {
     Compress-Archive -Path build/sm-ad-filter/* -DestinationPath $extensionZip
     git archive --format=zip --output=$sourceZip HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
-    Copy-Item PERFORMANCE-REVIEW-042.md,design-qa.md,README-SM.md,QA-SM.md,PRIVACY-SM.md,RELEASE-SM.md,FEATURES-SM.md -Destination $output
+    Copy-Item PERFORMANCE-REVIEW-042.md,design-qa.md,sm/site-catalog.json,SUPPORT-SM.md,PILOT-PLAN-SM.md,IMPLEMENTATION-MATRIX-043.md,README-SM.md,QA-SM.md,PRIVACY-SM.md,RELEASE-SM.md,FEATURES-SM.md -Destination $output
     Copy-Item build/qa-v2/browser-test.json -Destination $output
     Copy-Item build/qa-v2-msedge/browser-test.json -Destination (Join-Path $output 'edge-browser-test.json')
     Copy-Item build/qa-v2/live/results.json -Destination (Join-Path $output 'historical-0.2-live-results.json')
@@ -45,7 +61,9 @@ try {
         Copy-Item "build/qa-native-$channel/native-popup.png" -Destination (Join-Path $output "native-popup-$channel.png")
     }
     foreach ($channel in @('chromium','msedge')) { Copy-Item "build/qa-popup-performance-$channel/native-timing.json" -Destination (Join-Path $output "popup-timing-$channel.json") }
+    Copy-Item $gateReceipt -Destination (Join-Path $output 'performance-gate.json')
+    Copy-Item build/sm-ad-filter/SM-FILES.json -Destination (Join-Path $output 'SM-FILES.json')
     $hashes = @($extensionZip,$sourceZip) | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path
-    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion='0.4.1 / dfa9970';hashes=$hashes;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
+    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion='0.4.2 / 0030cf5';hashes=$hashes;performanceGate=$performanceGate;toolchain=(Get-Content build/sm-ad-filter/SM-BUILD.json -Raw | ConvertFrom-Json).toolchain;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
     Get-ChildItem -LiteralPath $output | Select-Object Name,Length
 } finally { Pop-Location }

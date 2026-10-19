@@ -1,3 +1,9 @@
+# 0.4.3 可靠性与可恢复性
+
+导入失败现在会连同临时暂停（到期时间、子域例外）一起回退；完整设置、规则编辑器和导入订阅进入同一个写入队列；修改操作带编号，超时后核对结果而不重复提交；浏览器中断导入后，下次启动自动核对并回退。控制中心增加“开始使用”清单、“网页显示异常？分步排查”和诊断信息复制。Cookie 自动拒绝关闭时，普通网页不再唤醒后台。构建增加上游补丁契约、目录锁定、文件清单和可重复构建检查。
+
+**不等于性能已达标。** 弹窗延迟没有在 Windows Chrome / Edge 上重新测量；性能门槛（`sm/perf-gates.json`）是未校准的建议值，当前没有任何设备通过它。完整的实施状态与未解决项见 IMPLEMENTATION-MATRIX-043.md，反馈流程见 SUPPORT-SM.md，试用材料见 PILOT-PLAN-SM.md。
+
 # 0.4.2 弹窗启动优化
 
 后台 25 个模块合并为一个本地文件；弹窗用单个有超时保护的请求读取当前站点，图片内嵌。审查记录见 PERFORMANCE-REVIEW-042.md，最终重复打开和后台唤醒计时见交付目录。源码构建先执行 npm ci --prefix sm/build-tools。
@@ -12,7 +18,7 @@
 
 性能证据以本次 native-timing.json 为准，首次安装与重复打开分开记录；不承诺任意设备秒开。GitHub 独立仓库未配置，此为本地提交的试用交付，未推送或商店发布。
 
-# SM 净览 0.3.1（本地试用版）
+# SM 净览（本地试用版）
 
 Chrome / Edge 广告与跟踪过滤扩展，基于 uBlock Origin Lite 的独立修改版本，非官方产品。功能对应见 FEATURES-SM.md，测试证据见 QA-SM.md。
 
@@ -34,7 +40,8 @@ Chrome / Edge 广告与跟踪过滤扩展，基于 uBlock Origin Lite 的独立�
 - 按域名查看和删除元素规则、最近操作撤销、恢复快照。
 - v2 配置导出、导入预览确认，检测预览后配置变化，失败时尝试自动回退。
 - 可选浏览器同步，手动读取/上传/删除、容量检查、版本冲突提示；跨浏览器迁移使用备份文件。
-- 可选 Cookie 拒绝：OneTrust / Cookiebot 标准拒绝按钮，默认关闭。
+- 可选 Cookie 拒绝：OneTrust / Cookiebot 标准拒绝按钮，默认关闭；关闭时网页脚本只读本地开关，不唤醒后台。
+- 开始使用清单、网页异常分步排查、诊断信息复制；导入失败/中断自动回退并提示。
 - 最近规则命中诊断，区别阻止、替换、放行；不将命中数称为广告数量或节省流量。
 - 脱敏反馈预览、复制、下载、打开已配置 GitHub 仓库的问题表单。
 
@@ -42,7 +49,7 @@ Cookie 功能不代表清除既有 Cookie，也不能证明服务端拒绝同意
 
 ## 版本、权限与隐私
 
-产品版本 0.2.0，浏览器升级版本 2026.1019.2，上游引擎 2026.1012.1545。本地加载版没有商店自动升级，需手动更新、保留旧包并重新加载，详见 RELEASE-SM.md。
+产品版本 0.4.3，浏览器升级版本 2026.1019.8，上游引擎 2026.1012.1545。本地加载版没有商店自动升级，需手动更新、保留旧包并重新加载，详见 RELEASE-SM.md。
 
 SM 不设置账号、遥测或自有服务器。网站访问和脚本权限用于内容过滤；storage 保存配置；DNR 执行网络规则；offscreen/userScripts 支持规则处理；alarms 调度恢复和更新。规则命中诊断权限可选。订阅会请求提供方；同步与 GitHub 反馈由用户主动开启。详见 PRIVACY-SM.md。
 
@@ -55,10 +62,14 @@ SM 不设置账号、遥测或自有服务器。网站访问和脚本权限用�
 Node.js 24：
 
 ```text
-node --test sm/welcome.test.mjs sm/worker.test.mjs
+npm ci --prefix sm/build-tools
+node --test sm/welcome.test.mjs sm/worker.test.mjs sm/updates.test.mjs sm/perf-stats.test.mjs
 node sm/build.mjs
 node sm/verify.mjs
+node sm/determinism.mjs
 ```
+
+上游目录被改动时 build 会失败并提示核对；确认无误后用 `node sm/build.mjs --update-lock` 更新 `sm/upstream-lock.json`。发布构建须使用锁文件固定的 esbuild（设置 `SM_REQUIRE_PINNED_ESBUILD=1`）。
 
 输出 build/sm-ad-filter。浏览器测试与打包见 RELEASE-SM.md。build 不提交。GitHub CI 已编写，远端执行尚未验证。
 

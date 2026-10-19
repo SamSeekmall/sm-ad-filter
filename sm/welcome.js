@@ -1,9 +1,28 @@
 import { modeNames, hostname, reportText, backupSummary } from './core.mjs';
 const $ = selector => document.querySelector(selector);
 let current, pending, pendingBase, cloudRevision = null, cloudRead = false, filters = [];
-async function send(what, data={}) {
+const mutating = new Set(['sm:restore','sm:setMode','sm:pause','sm:resume','sm:preset','sm:undo','sm:removeFilter','sm:cookieToggle','sm:setUserDnrRules','sm:clearRecords']);
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function ask(what, data, limit) {
     let timer;
-    const result = await Promise.race([chrome.runtime.sendMessage({what,...data}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('操作响应超时；后台可能仍在处理，请刷新状态后确认，勿重复提交')),what==='sm:updateLists'?180000:30000);})]).finally(()=>clearTimeout(timer));
+    try { return await Promise.race([chrome.runtime.sendMessage({what,...data}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(new Error('操作响应超时'),{timeout:true})),limit);})]); }
+    finally { clearTimeout(timer); }
+}
+async function send(what, data={}) {
+    const opId = mutating.has(what) ? `w-${crypto.randomUUID()}` : undefined;
+    let result;
+    try { result = await ask(what, {...data, opId}, what==='sm:updateLists'?180000:30000); }
+    catch (error) {
+        if (!error.timeout || !opId) throw error;
+        // The worker may still be running the request: look up its outcome by id instead of guessing or re-sending.
+        for (let i = 0; i < 20; i++) {
+            await wait(1000);
+            const status = (await ask('sm:opStatus', {opId}, 5000).catch(() => null))?.data;
+            if (status?.state === 'done') return status.result;
+            if (['failed','interrupted','rolledBack','rollbackFailed'].includes(status?.state)) throw new Error(status.error || status.message || '操作未完成');
+        }
+        throw new Error('操作结果未知：后台可能仍在处理。请先点击“刷新状态”确认，勿重复提交');
+    }
     if (!result?.ok) throw new Error(result?.error || '过滤引擎未就绪，请稍后重试');
     return result.data;
 }
@@ -66,6 +85,9 @@ async function refresh() {
     $('#releases').hidden=!repo; if(repo) $('#releases').href=`${repo}/releases`;
     list($('#pauses'),Object.entries(current.pauses).map(([h,p])=>`${h}：暂停至 ${p.until?date(p.until):'本次浏览器会话结束'}`));
     const history = await send('sm:history'); list($('#history'),history.map(h=>`${date(h.time)} · ${h.label}`));
+    showNotice();
+    await showChecklist();
+    wizardRender();
     actionState();
     await showLists();
 }
@@ -90,8 +112,90 @@ async function preview(data) {
     pending=null;$('#applyImport').disabled=true;$('#confirmImport').checked=false;
     const result=await send('sm:preview',{data});pending=result.data;pendingBase=result.baseRevision;
     const s=result.summary;
-    $('#preview').textContent=`备份时间：${pending.createdAt}\n规则组 ${s.lists} · 站点例外 ${s.sites} · 自定义规则 ${s.custom}\n外部订阅 ${s.subscriptions} · 高级规则 ${s.advanced?'有（请确认来源）':'无'}\n将替换当前配置，操作前保留本地恢复快照。\n站点例外：${JSON.stringify(pending.settings.filteringModes,null,2)}\n规则列表：${pending.settings.enabledRulesets.join(', ')}`;
+    $('#preview').textContent=`备份时间：${pending.createdAt}\n规则组 ${s.lists} · 站点例外 ${s.sites} · 自定义规则 ${s.custom}\n外部订阅 ${s.subscriptions} · 高级规则 ${s.advanced?'有（请确认来源）':'无'}\n将替换当前配置并结束所有临时暂停；操作前保留本地恢复快照，失败会自动回退。\n站点例外：${JSON.stringify(pending.settings.filteringModes,null,2)}\n规则列表：${pending.settings.enabledRulesets.join(', ')}`;
 }
+
+// ---- interrupted-operation notice, first-use checklist, site recovery wizard -------------------------------------
+function showNotice() {
+    const box = $('#notice'), notice = current?.notice;
+    box.replaceChildren();
+    if (!notice) return;
+    const text = document.createElement('span'); text.textContent = notice.message;
+    const ack = document.createElement('button'); ack.id = 'ackNotice'; ack.className = 'secondary'; ack.textContent = '知道了';
+    ack.onclick = () => run(ack, async () => { await send('sm:ackNotice'); await refresh(); });
+    box.append(text, ' ', ack);
+}
+const extensionDetailsUrl = () => `${/Edg\//.test(navigator.userAgent) ? 'edge' : 'chrome'}://extensions/?id=${chrome.runtime.id}`;
+async function showChecklist() {
+    const dismissed = (() => { try { return localStorage.getItem('sm.startDismissed') === '1'; } catch { return false; } })();
+    const rulesOn = ['chn-0','easylist','easyprivacy'].every(id => current.enabledRulesets.includes(id));
+    const lines = [
+        rulesOn ? '过滤规则：推荐规则已启用。' : '过滤规则：尚未启用推荐规则。点击下方“启用推荐规则”。',
+        current.hasAccess ? '网站访问权限：可用。' : '网站访问权限：不足。过滤需要读取和调整网页：在扩展详情页把“网站访问权限”设为“在所有网站上”。仅授予单个网站时，其他网站不会被过滤。',
+        '固定到工具栏：点击浏览器工具栏的拼图图标，再点 SM 净览旁的图钉，之后一键暂停此站点。',
+    ];
+    list($('#startChecks'), lines);
+    $('#startRecommended').hidden = rulesOn;
+    // Show until everything is in place or the user dismisses it; permission trouble is never hidden by "dismissed".
+    $('#start').hidden = dismissed && rulesOn && current.hasAccess;
+    let capacity = `已启用 ${current.enabledRulesets.length} 组规则（浏览器上限 ${current.maxNumberOfEnabledRulesets} 组）`;
+    try { if (chrome.declarativeNetRequest.getAvailableStaticRuleCount) capacity += `；浏览器还可启用约 ${await chrome.declarativeNetRequest.getAvailableStaticRuleCount()} 条静态规则`; } catch { /* Not available in this browser. */ }
+    $('#ruleCapacity').textContent = `${capacity}。接近上限时新增规则组可能失败，系统会提示。`;
+}
+const wizard = { step: 0 };
+function wizardRender() {
+    const body = $('#wizardBody');
+    body.replaceChildren();
+    const valid = Boolean(current?.hostname);
+    const say = text => { const p = document.createElement('p'); p.textContent = text; body.append(p); };
+    const row = document.createElement('div'); row.className = 'actions';
+    const button = (id, label, fn, secondary = true) => { const b = document.createElement('button'); b.id = id; b.textContent = label; if (secondary) b.className = 'secondary'; b.onclick = () => run(b, fn); row.append(b); return b; };
+    const host = current?.hostname;
+    const level = current?.level ?? 2;
+    if (!valid && wizard.step !== 0) wizard.step = 0;
+    switch (wizard.step) {
+    case 0:
+        say(valid ? `当前网站：${host}。我们按“暂停 → 降低强度 → 反馈”的顺序排查，每一步都可恢复。` : '请先在上方输入出现异常的网站并点击“查看”。');
+        button('wizStart', '第 1 步：暂停此站点 10 分钟', async () => { wizard.level = level; await send('sm:pause', {hostname: host, duration: '10m'}); wizard.step = 1; await refresh(); }, false).disabled = !valid;
+        break;
+    case 1:
+        say(`已暂停 ${host} 10 分钟并刷新网页。网页现在正常了吗？`);
+        button('wizFixed', '正常了', async () => { wizard.step = 2; wizardRender(); }, false);
+        button('wizStill', '仍然异常', async () => { wizard.step = 3; wizardRender(); });
+        break;
+    case 2:
+        {   // While paused the site reads as "不过滤"; the level before the pause is what can be lowered.
+            const base = wizard.level ?? 2;
+            say(base > 1 ? `暂停后恢复正常，说明问题与过滤有关。可只对 ${host} 把“${modeNames[base]}”降低一档，并恢复保护。` : `暂停后恢复正常，说明问题与过滤有关。此站点原本只用“${modeNames[base]}”，已经很低，建议提交反馈。`);
+            if (base > 1) button('wizLower', `降低到“${modeNames[base - 1]}”并恢复保护`, async () => { await send('sm:setMode', {hostname: host, level: base - 1}); wizard.step = 4; await refresh(); }, false);
+        }
+        button('wizReport', '去提交反馈', async () => { $('#issueKind').value = '网页功能异常'; location.hash = '#feedback'; });
+        break;
+    case 3:
+        say('暂停后仍然异常，多半与过滤无关（网站本身、网络或其他扩展）。建议恢复保护。');
+        button('wizResume', '恢复保护', async () => { await send('sm:resume', {hostname: host}); wizard.step = 5; await refresh(); }, false);
+        break;
+    case 4:
+        say(`已把 ${host} 调整为“${modeNames[level]}”。网页现在正常吗？`);
+        button('wizDone', '正常，完成', async () => { wizard.step = 5; wizardRender(); }, false);
+        button('wizPauseAgain', '仍异常：暂停并反馈', async () => { await send('sm:pause', {hostname: host, duration: '10m'}); $('#issueKind').value = '网页功能异常'; location.hash = '#feedback'; wizard.step = 5; await refresh(); });
+        break;
+    default:
+        say('排查结束。可随时再次开始。'); button('wizAgain', '重新开始', async () => { wizard.step = 0; wizardRender(); });
+    }
+    body.append(row);
+}
+$('#startRecommended').onclick = event => run(event.currentTarget, async () => { await send('sm:preset', {preset: 'recommended'}); await refresh(); });
+$('#startDone').onclick = () => { try { localStorage.setItem('sm.startDismissed', '1'); } catch { /* Private mode: keep showing. */ } $('#start').hidden = true; };
+$('#openExtDetails').onclick = event => run(event.currentTarget, async () => { await chrome.tabs.create({url: extensionDetailsUrl()}); });
+// Local diagnostics for support: versions, permissions and states only (no URLs, rule text or history).
+on('#copyDiagnostics',async()=>{
+    await refresh();
+    const text=JSON.stringify({product:current.release.productVersion,extension:chrome.runtime.getManifest().version,engine:current.release.engineVersion,browser:navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/g)?.join(' ')||'unknown',
+        siteAccess:current.hasAccess,userScripts:current.userScripts,enabledRulesetCount:current.enabledRulesets.length,defaultMode:modeNames[current.defaultFilteringMode],pausedSites:Object.keys(current.pauses).length,
+        startError:current.startError||null,lastNotice:current.notice?.message??null,time:new Date().toISOString()},null,2);
+    await navigator.clipboard.writeText(text);$('#notice').textContent='诊断信息已复制。';setTimeout(()=>{if($('#notice').textContent==='诊断信息已复制。')$('#notice').textContent='';},4000);
+});
 on('#refresh',refresh);on('#checkSite',refresh);
 $('#site').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('#checkSite').click();}});
 $('#site').addEventListener('input',actionState);$('#mode').addEventListener('change',actionState);

@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "purpose": "Representative-site acceptance catalog. Automatic checks are public, read-only page loads. Anything needing an account, playback, a form submission or a purchase is a manual task and is never automated or submitted on anyone's behalf.",
+  "rules": [
+    "Manual checkout tasks stop at the payment step; never enter payment details or place an order.",
+    "Use a throwaway or test account; never record credentials in results.",
+    "Record the browser, channel and extension build for every manual result."
+  ],
+  "sites": [
+    {"id":"wikipedia","category":"reference","url":"https://www.wikipedia.org/","expect":"#www-wikipedia-org, .central-textlogo","manual":["搜索一个词条并打开"]},
+    {"id":"bbc","category":"news-en","url":"https://www.bbc.com/","expect":"main","manual":["滚动首页到底并打开一篇文章","文章内嵌视频能播放"]},
+    {"id":"cnn","category":"news-en","url":"https://edition.cnn.com/","expect":"main, #pageHeader","manual":["打开文章并确认正文不被遮挡"]},
+    {"id":"163","category":"portal-zh","url":"https://www.163.com/","expect":"body","manual":["打开一条新闻并确认图片和视频可见"]},
+    {"id":"sina","category":"portal-zh","url":"https://www.sina.com.cn/","expect":"body","manual":["打开一条新闻并确认评论区可用"]},
+    {"id":"baidu","category":"search-zh","url":"https://www.baidu.com/","expect":"#kw, input[name=wd]","manual":["搜索一个关键词并点开结果"]},
+    {"id":"bing","category":"search","url":"https://www.bing.com/search?q=browser+extensions","expect":"#b_results, main","manual":["切换图片/视频标签"]},
+    {"id":"zhihu","category":"social-zh","url":"https://www.zhihu.com/","expect":"body","manual":["登录后浏览回答并点赞（测试账号）","无限滚动 30 秒无异常"]},
+    {"id":"weibo","category":"social-zh","url":"https://weibo.com/","expect":"body","manual":["登录后刷新时间线","发布框可输入（不要提交）"]},
+    {"id":"bilibili","category":"video-zh","url":"https://www.bilibili.com/","expect":"body","manual":["播放一个视频 60 秒（含片头广告）","弹幕/全屏/清晰度切换可用"]},
+    {"id":"youtube","category":"video","url":"https://www.youtube.com/","expect":"ytd-app, body","manual":["播放视频 60 秒，确认无异常循环","前贴片广告出现时页面不卡死","全屏与字幕开关"]},
+    {"id":"reddit","category":"social","url":"https://www.reddit.com/","expect":"body","manual":["登录后浏览并展开评论","无限滚动 30 秒"]},
+    {"id":"github","category":"tool","url":"https://github.com/","expect":"header, main","manual":["登录后打开仓库页和 Issues","编辑器类页面输入不被拦截"]},
+    {"id":"medium","category":"reading","url":"https://medium.com/","expect":"body","manual":["打开文章并确认弹窗可关闭"]},
+    {"id":"nytimes","category":"news-paywall","url":"https://www.nytimes.com/","expect":"main, #site-content","manual":["打开文章，确认付费墙提示与过滤互不影响"]},
+    {"id":"amazon","category":"shopping","url":"https://www.amazon.com/","expect":"#nav-logo, #nav-belt","manual":["搜索商品并打开详情页","加入购物车（测试账号）；结算只到付款页前，不付款"]},
+    {"id":"taobao","category":"shopping-zh","url":"https://www.taobao.com/","expect":"body","manual":["登录后搜索并打开详情页","结算只到支付页前，不付款"]},
+    {"id":"jd","category":"shopping-zh","url":"https://www.jd.com/","expect":"body","manual":["搜索并打开详情页","结算只到支付页前，不付款"]},
+    {"id":"shopee-ph","category":"shopping","url":"https://shopee.ph/","expect":"body","manual":["搜索并打开商品页","结算只到支付页前，不付款"]},
+    {"id":"lazada-ph","category":"shopping","url":"https://www.lazada.com.ph/","expect":"body","manual":["搜索并打开商品页","结算只到支付页前，不付款"]}
+  ]
+}

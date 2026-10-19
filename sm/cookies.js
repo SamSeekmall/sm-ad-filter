@@ -30,7 +30,8 @@
     }
     let timer;
     const observer = new MutationObserver(() => { if (!timer) timer = setTimeout(() => { timer = null; check(); },350); });
-    chrome.runtime.sendMessage({what:'sm:cookieAllowed'}).then(answer => {
+    // Default-off feature: read the opt-in flag from storage so ordinary page loads never wake the service worker.
+    chrome.storage.local.get('sm.cookieReject').then(stored => stored?.['sm.cookieReject'] === true ? chrome.runtime.sendMessage({what:'sm:cookieAllowed'}) : null).then(answer => {
         if (answer?.data !== true) return;
         check(); observer.observe(document.documentElement,{childList:true,subtree:true});
         setTimeout(() => { observer.disconnect(); clearTimeout(timer); },30000);

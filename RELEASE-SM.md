@@ -1,3 +1,13 @@
+# 0.4.3 可靠性
+
+回退：保留 0.4.2 安装包及其 SHA-256；更新桌面目录前另存一份完整备份（本版更新脚本会自动做并回读校验）。0.4.3 新增本机存储键 `sm.ops`（操作日志）、`sm.pendingRollback`（进行中标记）、`sm.notice`（一次性提示）；回退到 0.4.2 时这些键被忽略，无需手工清理。控制中心“清除本地操作记录”会一并清除。
+
+构建：先 `npm ci --prefix sm/build-tools`，发布构建设置 `SM_REQUIRE_PINNED_ESBUILD=1`；`node sm/determinism.mjs` 要求两次构建逐字节一致；`node sm/verify.mjs` 校验文件集合与摘要。`sm/package.ps1` 现在要求逻辑测试、可重复构建、锁定的 esbuild 和性能门槛（`sm/perf-gate.mjs`）；门槛未达标须用 `-PerformanceWaiver "理由"` 显式豁免，理由写入回执。该脚本的新增部分在 Linux 环境中无法运行，首次在 Windows 使用时需要先试跑。
+
+本版交付产物是在没有 Windows 浏览器的环境构建和验证的开发交付：Chrome / Edge 浏览器套件、原生弹窗和计时测试未按发布脚本要求运行，因此**不是**通过 package.ps1 门禁的发布包。
+
+重新加载：桌面目录文件更新不等于浏览器已运行新版本，需要在 chrome://extensions 或 edge://extensions 点击重新加载。
+
 # 0.4.2 弹窗启动优化
 
 后台 25 个模块合并为一个本地文件；弹窗用单个有超时保护的请求读取当前站点，图片内嵌。审查记录见 PERFORMANCE-REVIEW-042.md，最终重复打开和后台唤醒计时见交付目录。源码构建先执行 npm ci --prefix sm/build-tools。
