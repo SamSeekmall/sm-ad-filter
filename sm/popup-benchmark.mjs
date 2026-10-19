@@ -4,6 +4,7 @@
 //   node sm/popup-benchmark.mjs [baseline-extension-dir]
 // Env: SM_BROWSER_CHANNEL (chromium|chrome|msedge), SM_SAMPLES (warm, default 30), SM_WAKE_SAMPLES (default = SM_SAMPLES),
 //      SM_RESTART_SAMPLES (default 5), SM_LOAD (normal|high), SM_SAMPLE_TIMEOUT_MS (default 15000).
+// The baseline build (0.4.2) predates in-popup segment timing, so only its end-to-end time is recorded.
 // Slow or failed samples are reported, never dropped or retried. A finished run is not a passed gate: see sm/perf-gate.mjs.
 import {tmpdir,cpus,loadavg,totalmem,freemem,platform,release} from 'node:os';
 import path from 'node:path';
@@ -57,10 +58,10 @@ async function sample(rig,kind){
         const call=(method,params={})=>new Promise((resolve,reject)=>{const n=++seq,timer=setTimeout(()=>{pending.delete(n);reject(Error('CDP timed out'));},5000);pending.set(n,{resolve,reject,timer});rig.cdp.send('Target.sendMessageToTarget',{sessionId,message:JSON.stringify({id:n,method,params})}).catch(reject);});
         try{
             let data;const deadline=start+timeoutMs;
-            do{const r=await call('Runtime.evaluate',{expression:`JSON.stringify({state:document.querySelector('#state')?.textContent,timing:document.documentElement.dataset.timing||null,width:innerWidth})`,returnByValue:true});data=JSON.parse(r.result.value);if(data.state?.includes('已开启保护')&&data.timing)break;await sleep(25);}while(performance.now()<deadline);
+            do{const r=await call('Runtime.evaluate',{expression:`JSON.stringify({state:document.querySelector('#state')?.textContent,timing:document.documentElement.dataset.timing||null,width:innerWidth})`,returnByValue:true});data=JSON.parse(r.result.value);if(data.state?.includes('已开启保护')&&(data.timing||!rig.reportsTiming))break;await sleep(25);}while(performance.now()<deadline);
             record.stateObservedMs=Math.round(performance.now()-start);record.width=data.width;
             if(data.timing)record.timing=JSON.parse(data.timing);
-            record.ok=Boolean(data.state?.includes('已开启保护')&&data.timing);
+            record.ok=Boolean(data.state?.includes('已开启保护')&&(data.timing||!rig.reportsTiming));
             if(!record.ok){record.timedOut=true;record.error=`protection state not visible within ${timeoutMs} ms (state: ${data.state})`;}
         }finally{rig.cdp.off('Target.receivedMessageFromTarget',listener);}
     }catch(error){record.error=String(error.message||error);record.timedOut=/time(d)? ?out|did not appear/i.test(record.error);}
@@ -72,7 +73,7 @@ async function main(){
     const rigs=[];
     if(baselineDir)rigs.push({label:'baseline',extension:baselineDir});
     rigs.push({label:'current',extension:path.resolve('build/sm-ad-filter')});
-    for(const rig of rigs){rig.profile=path.join(tmpdir(),`sm-ad-filter-bench-${rig.label}-${crypto.randomUUID()}`);rig.build=JSON.parse(await readFile(path.join(rig.extension,'SM-BUILD.json'),'utf8'));rig.run={label:rig.label,build:rig.build,samples:[],groups:{}};report.runs.push(rig.run);await launch(rig);}
+    for(const rig of rigs){rig.profile=path.join(tmpdir(),`sm-ad-filter-bench-${rig.label}-${crypto.randomUUID()}`);rig.build=JSON.parse(await readFile(path.join(rig.extension,'SM-BUILD.json'),'utf8'));rig.reportsTiming=rig.label==='current';rig.run={label:rig.label,build:rig.build,samples:[],groups:{}};report.runs.push(rig.run);await launch(rig);}
     report.browserVersion=rigs[0].context.browser().version();await save();
     startLoad();
     try{
