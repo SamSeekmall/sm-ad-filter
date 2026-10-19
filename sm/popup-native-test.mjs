@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -8,7 +9,7 @@ const channel=process.env.SM_BROWSER_CHANNEL||'chromium',out=path.resolve(`build
 const server=createServer((req,res)=>res.end('<!doctype html><title>Popup fixture</title><p>Normal content</p>'));await new Promise(r=>server.listen(0,'127.0.0.1',r));
 let context;
 try{
-context=await chromium.launchPersistentContext(path.resolve(`build/qa/native-popup-${channel}-${crypto.randomUUID()}`),{channel,headless:true,args:[`--disable-extensions-except=${path.resolve('build/sm-ad-filter')}`,`--load-extension=${path.resolve('build/sm-ad-filter')}`,'--host-resolver-rules=MAP example.com 127.0.0.1','--no-proxy-server']});
+context=await chromium.launchPersistentContext(path.join(tmpdir(),`sm-ad-filter-native-${channel}-${crypto.randomUUID()}`),{channel,headless:true,args:[`--disable-extensions-except=${path.resolve('build/sm-ad-filter')}`,`--load-extension=${path.resolve('build/sm-ad-filter')}`,'--host-resolver-rules=MAP example.com 127.0.0.1','--no-proxy-server']});
 const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
 const driver=await context.newPage();await driver.goto(`chrome-extension://${new URL(worker.url()).host}/welcome.html`);await driver.bringToFront();await driver.locator('#status-refresh[data-state=success]').waitFor({state:'attached',timeout:60000});
 const page=await context.newPage();await page.goto(`http://example.com:${server.address().port}`);await page.bringToFront();

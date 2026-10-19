@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 // Native popup benchmark: open from an extension page (not the worker), report each sample.
 import path from 'node:path';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
@@ -13,7 +14,7 @@ const report={scope:'Native popup; isolated profile; engine preloaded; 3 success
 const save=()=>writeFile(path.join(out,'native-timing.json'),JSON.stringify(report,null,2));
 async function measure(extension,label){
  const run={label,build:JSON.parse(await readFile(path.join(extension,'SM-BUILD.json'),'utf8')),samples:[]};report.runs.push(run);await save();
- const context=await chromium.launchPersistentContext(path.resolve(`build/qa/bench-${label}-${crypto.randomUUID()}`),{channel,headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP example.com 127.0.0.1','--no-proxy-server']});
+ const context=await chromium.launchPersistentContext(path.join(tmpdir(),`sm-ad-filter-bench-${label}-${crypto.randomUUID()}`),{channel,headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--host-resolver-rules=MAP example.com 127.0.0.1','--no-proxy-server']});
  context.setDefaultTimeout(60000);
  try{
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');const id=new URL(worker.url()).host;

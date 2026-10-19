@@ -1,3 +1,4 @@
+import {tmpdir} from 'node:os';
 // Isolated browser integration suite. No daily user profile is touched.
 import {createServer} from 'node:http';
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
@@ -20,7 +21,7 @@ const server=createServer((req,res)=>{
     res.end(`<!doctype html><title>SM regression fixture</title><h1>Normal content</h1><div class="sm-qa-hidden-target-7c91">Sponsor</div><form id="form"><label>Search <input id="sm-qa-search-7c91" required></label><button>Submit</button></form><p id="result"></p><div id="onetrust-banner-sdk"><button id="onetrust-reject-all-handler">${label}</button></div><script>document.querySelector('#form').onsubmit=e=>{e.preventDefault();document.querySelector('#result').textContent=document.querySelector('#sm-qa-search-7c91').value};document.querySelector('#onetrust-reject-all-handler').onclick=()=>{window.rejected=true;document.querySelector('#onetrust-banner-sdk').remove()};</script>`);
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;
-const profile=path.join(root,`build/qa/profile-v2-${browserChannel}-${crypto.randomUUID()}`);
+const profile=path.join(tmpdir(),`sm-ad-filter-profile-${browserChannel}-${crypto.randomUUID()}`);
 const options={channel:browserChannel,headless:true,args:[`--disable-extensions-except=${path.join(root,'build/sm-ad-filter')}`,`--load-extension=${path.join(root,'build/sm-ad-filter')}`,'--host-resolver-rules=MAP doubleclick.net 127.0.0.1','--no-proxy-server']};
 let context,page,fixture,id;const errors=[];
 async function launch(){

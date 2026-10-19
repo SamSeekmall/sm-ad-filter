@@ -21,3 +21,5 @@
 参考：[Chrome 扩展后台模块约束](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/basics)、[esbuild 构建 API](https://esbuild.github.io/api/#bundle)、[CDP ServiceWorker](https://chromedevtools.github.io/devtools-protocol/tot/ServiceWorker/)。
 
 原生功能脚本也改为从扩展页面调用打开，避免通过正在初始化的 worker 发起。该脚本明确预热，仅验证交互；后台停止后的唤醒由单独基准验证。
+
+测试环境修正：隔离浏览器配置从 OneDrive 工作区迁到系统临时目录，减少同步目录写入对测量的干扰；浏览器二进制与报告位置不变。一次慢样本期间系统采样 CPU 100%、内存 87%（可用 1.92 GB），不将此时的前后差异视为稳定提速比例。
