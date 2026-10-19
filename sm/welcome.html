@@ -117,6 +117,13 @@
 <div class="actions"><button id="copyDiagnostics" class="secondary">复制诊断信息</button></div>
 <p class="muted">诊断信息只含版本、权限与状态，不含网址、规则内容或浏览记录；反馈时可以附上。</p>
 </section>
+<section class="panel" id="speed">
+<h2>弹窗速度（本机）</h2>
+<p class="muted">每次打开工具栏弹窗都会在本机记录各阶段耗时（只有数字，不含网址），最多 30 次。“从点击到可见”之外，浏览器创建弹窗窗口前的等待无法从扩展内部测到。</p>
+<ul id="speedSummary" class="plain"></ul>
+<div class="actions"><button id="probeFiles" class="secondary">测量扩展文件读取速度</button><button id="clearSpeed" class="textButton">清除速度记录</button></div>
+<p id="probeResult" class="muted"></p>
+</section>
 <section class="panel">
 <h2>版本与规则容量</h2>
 <p id="ruleVersion" class="muted"></p>

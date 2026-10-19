@@ -108,6 +108,7 @@ async function refresh() {
     wizardRender();
     actionState();
     await showLists();
+    await showSpeed();
 }
 async function showLists() {
     const lists=await send('sm:lists');
@@ -215,9 +216,30 @@ on('#copyDiagnostics',async()=>{
     await refresh();
     const text=JSON.stringify({product:current.release.productVersion,extension:chrome.runtime.getManifest().version,engine:current.release.engineVersion,browser:navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/g)?.join(' ')||'unknown',
         siteAccess:current.hasAccess,userScripts:current.userScripts,enabledRulesetCount:current.enabledRulesets.length,defaultMode:modeNames[current.defaultFilteringMode],pausedSites:Object.keys(current.pauses).length,
-        startError:current.startError||null,lastNotice:current.notice?.message??null,time:new Date().toISOString()},null,2);
+        startError:current.startError||null,lastNotice:current.notice?.message??null,popupTimings:(await chrome.storage.local.get('sm.popupTimings'))['sm.popupTimings']||[],fileProbe:window.smProbe||null,time:new Date().toISOString()},null,2);
     await navigator.clipboard.writeText(text);$('#notice').textContent='诊断信息已复制。';setTimeout(()=>{if($('#notice').textContent==='诊断信息已复制。')$('#notice').textContent='';},4000);
 });
+// ---- local popup speed log and file-read probe (diagnostics page) ------------------------------------------
+const median=a=>{const v=a.filter(x=>Number.isFinite(x)).sort((x,y)=>x-y);return v.length?v[Math.floor((v.length-1)/2)]:null;};
+const maxOf=a=>{const v=a.filter(x=>Number.isFinite(x));return v.length?Math.max(...v):null;};
+async function showSpeed(){
+    const samples=(await chrome.storage.local.get('sm.popupTimings'))['sm.popupTimings']||[];
+    if(!samples.length){empty($('#speedSummary'),'还没有记录。点几次工具栏的 SM 图标后再刷新本页。');return null;}
+    const row=(label,key)=>`${label}：中位 ${median(samples.map(s=>s[key]))??'—'} ms，最慢 ${maxOf(samples.map(s=>s[key]))??'—'} ms`;
+    const woke=samples.filter(s=>s.wokeWorker).length;
+    list($('#speedSummary'),[`最近 ${samples.length} 次打开，其中 ${woke} 次需要唤醒后台`,row('从开始加载到显示保护状态','stateVisibleMs'),row('读取弹窗文件','fileReadMs'),row('等待后台引擎就绪','waitForInitMs'),row('与后台往返','roundTripMs')]);
+    return samples;
+}
+async function probeFiles(){
+    const files=['sm/popup.html','sm/core.mjs','js/background.bundle.js','rulesets/generic-details.json','rulesets/main/easylist.json','_locales/zh_CN/messages.json'];const out=[];
+    for(const f of files){const t=performance.now();const r=await fetch(chrome.runtime.getURL(f),{cache:'no-store'});const b=await r.arrayBuffer();out.push({file:f,ms:Math.round(performance.now()-t),kb:Math.round(b.byteLength/1024)});}
+    return out;
+}
+on('#probeFiles',async()=>{const rounds=[];for(let i=0;i<3;i++)rounds.push(await probeFiles());
+    const first=rounds[0],worst=Math.max(...rounds.flat().map(x=>x.ms));
+    $('#probeResult').textContent=`第一次读取：${first.map(x=>`${x.file.split('/').pop()} ${x.ms} ms`).join('，')}。三轮最慢 ${worst} ms。`+(worst>200?'读取明显偏慢：扩展文件夹很可能放在 OneDrive 等同步目录，或文件只保存在云端。建议在资源管理器里对该文件夹选“始终保留在此设备上”，或移到不同步的本地文件夹后重新加载。':'文件读取正常，慢不在磁盘这一段。');
+    window.smProbe=rounds;});
+on('#clearSpeed',async()=>{await chrome.storage.local.remove('sm.popupTimings');await showSpeed();});
 on('#refresh',refresh);on('#checkSite',refresh);
 $('#site').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('#checkSite').click();}});
 $('#site').addEventListener('input',actionState);$('#mode').addEventListener('change',actionState);
@@ -270,6 +292,6 @@ const PAGES=['protection','rules','migration','feedback','about'];
 function route(){const id=PAGES.includes(location.hash.slice(1))?location.hash.slice(1):'protection';
     for(const page of PAGES)document.getElementById(page).hidden=page!==id;
     for(const a of document.querySelectorAll('nav a[data-page]')){if(a.dataset.page===id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
-    document.title=`SM 净览 · ${document.getElementById(id).dataset.title}`;scrollTo(0,0);}
+    document.title=`SM 净览 · ${document.getElementById(id).dataset.title}`;scrollTo(0,0);if(id==='about')showSpeed().catch(()=>{});}
 addEventListener('hashchange',route);route();
 run($('#refresh'),refresh);

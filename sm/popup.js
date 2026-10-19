@@ -36,7 +36,11 @@ async function extras(){if(!state?.hostname)return;
  await renderCheck();}
 // Segment timings stay on this page (dataset + window) for the benchmark harness; nothing is stored or sent.
 function recordTiming(sentAt,repliedAt,worker){const script=performance.getEntriesByName('sm-popup-script')[0]?.startTime??null;
- requestAnimationFrame(()=>{const t={popupScriptMs:script&&Math.round(script),requestSentMs:Math.round(sentAt),replyReceivedMs:Math.round(repliedAt),roundTripMs:Math.round(repliedAt-sentAt),stateVisibleMs:Math.round(performance.now()),worker};window.smTiming=t;document.documentElement.dataset.timing=JSON.stringify(t);});}
+ requestAnimationFrame(()=>{const t={popupScriptMs:script&&Math.round(script),requestSentMs:Math.round(sentAt),replyReceivedMs:Math.round(repliedAt),roundTripMs:Math.round(repliedAt-sentAt),stateVisibleMs:Math.round(performance.now()),worker};window.smTiming=t;document.documentElement.dataset.timing=JSON.stringify(t);keepTiming(t);});}
+// Local speed log (numbers only, no site names): the control center's diagnostics page summarises it.
+async function keepTiming(t){try{const n=performance.getEntriesByType('navigation')[0];
+ const sample={time:Date.now(),fileReadMs:n?Math.round(n.responseEnd-n.fetchStart):null,startToFetchMs:n?Math.round(n.fetchStart):null,parseMs:n?Math.round(n.domInteractive-n.responseEnd):null,scriptMs:t.popupScriptMs,roundTripMs:t.roundTripMs,waitForInitMs:t.worker?.waitForInitMs??null,wokeWorker:t.worker?.wokeWorker??null,stateVisibleMs:t.stateVisibleMs};
+ const key='sm.popupTimings',old=(await chrome.storage.local.get(key))[key]||[];await chrome.storage.local.set({[key]:[...old,sample].slice(-30)});}catch{}}
 async function load(){const ticket=++sequence;document.documentElement.dataset.ready="false";state=null;enabled();let slow=setTimeout(()=>{if(ticket===sequence)showStatus('正在唤醒过滤引擎…','loading');},1500);
  try{const sentAt=performance.now(),value=await send('sm:popupStatus'),repliedAt=performance.now();if(ticket!==sequence)return;tab={id:value.tabId};state=value;recordTiming(sentAt,repliedAt,value.timing);if(!busy){$('#actionStatus').hidden=true;$('#actionStatus').replaceChildren();}paint();extras();}
  catch(e){if(ticket!==sequence)return;showStatus('保护状态暂未确认','unavailable');$('#actionStatus').hidden=false;$('#actionStatus').dataset.error='true';$('#actionStatus').textContent=e.message;const retry=document.createElement('button');retry.textContent='重新读取';retry.onclick=()=>{retry.remove();load();};$('#actionStatus').append(' ',retry);}
