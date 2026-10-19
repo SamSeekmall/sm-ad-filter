@@ -1,5 +1,6 @@
 // SM control layer. All mutations are serialized; raw upstream APIs stay intact.
 import { hostname, related, subtree, mergeSubtree, canonical, validateBackup, backupSummary, validateRepository } from './core.mjs';
+import { stageLists } from './updates.mjs';
 const api = chrome;
 const read = async (key, fallback) => (await api.storage.local.get(key))[key] ?? fallback;
 const write = (key, value) => api.storage.local.set({ [key]: value });
@@ -8,7 +9,38 @@ const changed = new Set(['setFilteringMode','setDefaultFilteringMode','setFilter
 export function createController(engine, ready, parseDnr) {
     let chain = Promise.resolve();
     const serial = fn => { const next = chain.then(async () => { await ready; return fn(); }); chain = next.catch(() => {}); return next; };
-    let session;
+    let session, releasePromise, updateJob, updateAbort;
+    const staticActions = new Map();
+    async function historyIndex() {
+        const index = await read('sm.historyIndex',null);
+        if (index) return index;
+        const old = await read('sm.history',[]), next=[];
+        for (const item of old) {
+            const bytes=new TextEncoder().encode(JSON.stringify(item)).length;
+            await write(`sm.history.${item.id}`,item);
+            next.push({id:item.id,label:item.label,time:item.time,bytes});
+        }
+        let total=next.reduce((sum,x)=>sum+x.bytes,0);const removed=[];
+        while(next.length>10||total>2000000){const item=next.pop();total-=item.bytes;removed.push(`sm.history.${item.id}`);}
+        await write('sm.historyIndex',next);
+        await api.storage.local.remove(['sm.history',...removed]);
+        return next;
+    }
+    async function updateLists() {
+        if(updateJob?.state==='downloading'||updateJob?.state==='committing') throw new Error('订阅更新正在进行');
+        updateAbort=new AbortController();
+        updateJob={state:'downloading',files:0,bytes:0};
+        try {
+            const entries=await stageLists(await engine({what:'getImportedLists'}),AbortSignal.any([updateAbort.signal,AbortSignal.timeout(90000)]),(files,bytes)=>Object.assign(updateJob,{files,bytes}));
+            updateAbort.signal.throwIfAborted();
+            return await serial(async()=>{
+                updateAbort.signal.throwIfAborted(); updateJob.state='committing';
+                await api.storage.session.set({'sm.stagedLists':entries});
+                try { await engine({what:'updateImportedLists',force:true}); updateJob.state='complete'; return engine({what:'getImportedLists'}); }
+                finally { await api.storage.session.remove('sm.stagedLists'); }
+            });
+        } catch(error) { updateJob.state=updateAbort.signal.aborted?'cancelled':'failed'; updateJob.error=error.message; throw error; }
+    }
     async function snapshot() {
         const [config, modes, custom, sandbox, dnrRules, cookieReject, imported] = await Promise.all([
             engine({what:'getCurrentConfig'}), engine({what:'getFilteringModeDetails'}), engine({what:'getAllCustomFilters'}), engine({what:'getSandboxFilters'}), read('userDnrRules',''), read('sm.cookieReject',false), engine({what:'getImportedLists'}),
@@ -49,10 +81,16 @@ export function createController(engine, ready, parseDnr) {
     }
     async function remember(label,before,after) {
         if (canonical(before.settings) === canonical(after.settings)) return;
-        const history = await read('sm.history',[]);
-        history.unshift({id:crypto.randomUUID(),label,time:Date.now(),before,after:after.settings});
-        while (history.length > 10 || JSON.stringify(history).length > 2000000) history.pop();
-        await write('sm.history',history);
+        const history = await historyIndex();
+        const item={id:crypto.randomUUID(),label,time:Date.now(),before,after:after.settings};
+        const bytes=new TextEncoder().encode(JSON.stringify(item)).length;
+        if(bytes>2000000)return;
+        await write(`sm.history.${item.id}`,item);
+        history.unshift({id:item.id,label,time:item.time,bytes});
+        let total=history.reduce((sum,x)=>sum+x.bytes,0); const removed=[];
+        while(history.length>10||total>2000000){const old=history.pop();total-=old.bytes;removed.push(`sm.history.${old.id}`);}
+        await write('sm.historyIndex',history);
+        if(removed.length)await api.storage.local.remove(removed);
     }
     async function mutate(label,fn) {
         const before = await snapshot();
@@ -81,6 +119,7 @@ export function createController(engine, ready, parseDnr) {
         for (const tab of tabs) try { if (tab.url && hostname(tab.url) === host) await api.tabs.reload(tab.id); } catch { /* Closed or protected tab. */ }
     }
     async function initialize() {
+        await historyIndex();
         session = (await api.storage.session.get('sm.session'))['sm.session'];
         if (!session) { session = crypto.randomUUID(); await api.storage.session.set({'sm.session':session}); }
         const pauses = await read('sm.pauses',{});
@@ -98,7 +137,7 @@ export function createController(engine, ready, parseDnr) {
         for (const key of Object.keys(await read('sm.pauses',{}))) if (!host || related(key,host)) await resume(key);
     }
     async function getStatus(request) {
-        const data = await engine({what:'getOptionsPageData'});
+        const [data,local] = await Promise.all([engine({what:'getOptionsPageData'}),api.storage.local.get(['sm.pauses','sm.cookieReject','sm.cookies','sm.repository','sm.syncEnabled','sm.startError'])]);
         let host = '', tab;
         if (Number.isInteger(request.tabId)) tab = await api.tabs.get(request.tabId).catch(() => undefined);
         if (tab?.url && /^https?:/.test(tab.url)) host = hostname(tab.url);
@@ -108,8 +147,8 @@ export function createController(engine, ready, parseDnr) {
         try { await api.userScripts.getScripts(); userScripts = true; } catch { /* Permission unavailable. */ }
         const hasAccess = host ? await api.permissions.contains({origins:[`*://${host}/*`]}) : data.hasOmnipotence;
         return { ...data, hostname:host, tabId:tab?.id, level:host ? await engine({what:'getFilteringMode',hostname:host}) : data.defaultFilteringMode,
-            hasAccess,userScripts,pauses:await read('sm.pauses',{}), cookieReject:await read('sm.cookieReject',false), cookies:host ? (await read('sm.cookies',{}))[host] : null,
-            release:await (await fetch(api.runtime.getURL('sm/release.json'))).json(), repository:await read('sm.repository',''), syncEnabled:await read('sm.syncEnabled',false), startError:await read('sm.startError','') };
+            hasAccess,userScripts,pauses:local['sm.pauses']??{}, cookieReject:local['sm.cookieReject']??false, cookies:host ? (local['sm.cookies']??{})[host] : null,
+            release:await (releasePromise ??= fetch(api.runtime.getURL('sm/release.json')).then(r=>r.json()).catch(e=>{releasePromise=null;throw e;})), repository:local['sm.repository']??'', syncEnabled:local['sm.syncEnabled']??false, startError:local['sm.startError']??'' };
     }
     async function handle(r) {
         const host = r.hostname ? hostname(r.hostname) : '';
@@ -129,7 +168,7 @@ export function createController(engine, ready, parseDnr) {
             return true;
         }
         case 'sm:recovery': return read('sm.recovery',null);
-        case 'sm:clearRecords': await api.storage.local.remove(['sm.history','sm.recovery','sm.cookies']); return true;
+        case 'sm:clearRecords': { const history=await historyIndex(); await write('sm.historyIndex',[]); await api.storage.local.remove(['sm.history','sm.recovery','sm.cookies',...history.map(x=>`sm.history.${x.id}`)]); return true; }
         case 'sm:setMode': {
             if (!host || ![0,1,2,3].includes(r.level)) throw new Error('站点或过滤模式无效');
             await cancelOverlapping(host);
@@ -165,13 +204,13 @@ export function createController(engine, ready, parseDnr) {
                 return after;
             });
         }
-        case 'sm:history': return (await read('sm.history',[])).map(({id,label,time}) => ({id,label,time}));
+        case 'sm:history': return (await historyIndex()).map(({id,label,time}) => ({id,label,time}));
         case 'sm:undo': {
-            const history = await read('sm.history',[]); const item = history[0];
+            const history = await historyIndex(); const item = history[0] ? await read(`sm.history.${history[0].id}`,null) : null;
             if (!item) throw new Error('没有可撤销的修改');
             if (Object.keys(await read('sm.pauses',{})).length) throw new Error('请先恢复临时暂停的网站');
             if (canonical((await snapshot()).settings) !== canonical(item.after)) throw new Error('配置已发生其他变化，请导出备份后使用恢复快照');
-            await apply(item.before); history.shift(); await write('sm.history',history); return true;
+            await apply(item.before); history.shift(); await write('sm.historyIndex',history); await api.storage.local.remove(`sm.history.${item.id}`); return true;
         }
         case 'sm:filters': return engine({what:'getAllCustomFilters'});
         case 'sm:removeFilter': {
@@ -181,10 +220,9 @@ export function createController(engine, ready, parseDnr) {
         case 'sm:cookieToggle': return mutate('切换 Cookie 自动拒绝',() => write('sm.cookieReject',r.enabled === true));
         case 'sm:repository': await write('sm.repository',validateRepository(r.url)); return true;
         case 'sm:lists': return engine({what:'getImportedLists'});
-        case 'sm:updateLists': {
-            await engine({what:'updateImportedLists',force:true});
-            return engine({what:'getImportedLists'});
-        }
+        case 'sm:updateLists': return updateLists();
+        case 'sm:updateProgress': return updateJob ?? {state:'idle'};
+        case 'sm:cancelUpdate': if(updateJob?.state==='downloading'){updateAbort.abort();return true;} throw new Error('已进入规则提交阶段，无法取消');
         case 'sm:syncEnable': await write('sm.syncEnabled',r.enabled === true); return true;
         case 'sm:syncRead': {
             if (!(await read('sm.syncEnabled',false))) throw new Error('请先开启可选同步');
@@ -215,10 +253,10 @@ export function createController(engine, ready, parseDnr) {
                 else if (id === '_session') sources.set(id,await api.declarativeNetRequest.getSessionRules());
                 else {
                     const entry = api.runtime.getManifest().declarative_net_request.rule_resources.find(x=>x.id===id);
-                    if (entry) sources.set(id,await (await fetch(api.runtime.getURL(entry.path.replace(/^\//,'')))).json());
+                    if (entry) { if(!staticActions.has(id)){const rules=await (await fetch(api.runtime.getURL(entry.path.replace(/^\//,'')))).json(); if(staticActions.size>=4)staticActions.delete(staticActions.keys().next().value); staticActions.set(id,new Map(rules.map(x=>[x.id,x.action?.type]))); } sources.set(id,staticActions.get(id)); }
                 }
             }
-            return rows.map(x => ({ruleId:x.rule.ruleId,rulesetId:x.rule.rulesetId,timeStamp:x.timeStamp,action:sources.get(x.rule.rulesetId)?.find(rule=>rule.id===x.rule.ruleId)?.action?.type ?? 'unknown'}));
+            return rows.map(x => ({ruleId:x.rule.ruleId,rulesetId:x.rule.rulesetId,timeStamp:x.timeStamp,action:(sources.get(x.rule.rulesetId) instanceof Map ? sources.get(x.rule.rulesetId).get(x.rule.ruleId) : sources.get(x.rule.rulesetId)?.find(rule=>rule.id===x.rule.ruleId)?.action?.type) ?? 'unknown'}));
         }
         default: throw new Error('未知操作');
         }
@@ -242,7 +280,8 @@ export function createController(engine, ready, parseDnr) {
             }).then(data => reply({ok:true,data}),error => reply({ok:false,error:error.message}));
             return true;
         }
-        serial(() => handle(r)).then(data => reply({ok:true,data}),error => reply({ok:false,error:error.message}));
+        const direct = ['sm:status','sm:lists','sm:history','sm:updateLists','sm:updateProgress','sm:cancelUpdate','sm:stats'].includes(r.what);
+        (direct ? initialized.then(()=>handle(r)) : serial(() => handle(r))).then(data => reply({ok:true,data}),error => reply({ok:false,error:error.message}));
         return true;
     });
     return { wrap(request,sender) {

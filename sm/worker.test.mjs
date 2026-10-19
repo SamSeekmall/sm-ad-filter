@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const store={},sessionStore={},syncStore={},listeners=[],alarms=new Map();
-const area=data=>({async get(key){if(key===null)return {...data};return {[key]:data[key]};},async set(value){Object.assign(data,structuredClone(value));},async remove(keys){for(const k of Array.isArray(keys)?keys:[keys])delete data[k];}});
+const area=data=>({async get(key){if(key===null)return {...data};if(Array.isArray(key))return Object.fromEntries(key.map(k=>[k,data[k]]));return {[key]:data[key]};},async set(value){Object.assign(data,structuredClone(value));},async remove(keys){for(const k of Array.isArray(keys)?keys:[keys])delete data[k];}});
 let modes={none:[],basic:[],optimal:['all-urls'],complete:[]},custom=[],enabled=['easylist'],ignoreNextMode=false;
 const config={enabledRulesets:enabled,autoReload:true,showBlockedCount:true,strictBlockMode:true,popupBlockMode:true,developerMode:false};
 globalThis.chrome={storage:{local:area(store),session:area(sessionStore),sync:area(syncStore)},runtime:{id:'test',getURL:p=>`chrome-extension://test/${p}`,getManifest:()=>({declarative_net_request:{rule_resources:[{id:'easylist'},{id:'chn-0'}]}}),onMessage:{addListener:fn=>listeners.push(fn)}},alarms:{onAlarm:{addListener(){}},async create(k,v){alarms.set(k,v)},async clear(k){alarms.delete(k)}},tabs:{async query(){return []}}};
@@ -71,4 +71,15 @@ test('diagnostic matches distinguish blocked, allowed, and unknown actions',asyn
     const result=await send({what:'sm:stats',tabId:1});assert.equal(result.ok,true);
     assert.deepEqual(result.data.map(x=>x.action),['block','allowAllRequests','unknown']);
     assert.equal(result.data.some(x=>'url' in x),false);
+});
+
+test('history migrates once and metadata does not contain full snapshots',async()=>{
+    await send({what:'sm:clearRecords'});delete store['sm.historyIndex'];
+    const before=(await send({what:'sm:snapshot'})).data;
+    store['sm.history']=[{id:'legacy',label:'old',time:1,before,after:before.settings}];
+    const index=(await send({what:'sm:history'})).data;
+    assert.deepEqual(index,[{id:'legacy',label:'old',time:1}]);
+    assert.equal(store['sm.history'],undefined);assert.ok(store['sm.history.legacy'].before);
+    assert.ok(store['sm.historyIndex'][0].bytes>0);
+    await send({what:'sm:undo'});assert.equal(store['sm.history.legacy'],undefined);
 });

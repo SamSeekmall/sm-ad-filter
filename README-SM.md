@@ -1,4 +1,4 @@
-# SM 净览 0.2.0（本地试用版）
+# SM 净览 0.3.0（本地试用版）
 
 Chrome / Edge 广告与跟踪过滤扩展，基于 uBlock Origin Lite 的独立修改版本，非官方产品。功能对应见 FEATURES-SM.md，测试证据见 QA-SM.md。
 

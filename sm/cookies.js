@@ -12,8 +12,6 @@
         if (busy) return;
         busy = true;
         try {
-            const permission = await chrome.runtime.sendMessage({what:'sm:cookieAllowed'});
-            if (!permission?.ok || permission.data !== true) return;
             for (const a of adapters) {
                 if (attempted.has(a.provider)) continue;
                 const box = document.querySelector(a.container);
@@ -21,16 +19,20 @@
                 if (!visible(box) || !visible(button) || button.disabled || button.tagName !== 'BUTTON') continue;
                 const text = (button.textContent || button.getAttribute('aria-label') || '').trim();
                 if (!/reject|decline|deny|拒绝|全部拒絕|拒絕全部/i.test(text) || /accept|allow all|接受|同意全部/i.test(text)) continue;
+                const permission = await chrome.runtime.sendMessage({what:'sm:cookieAllowed'});
+                if (!permission?.ok || permission.data !== true) { observer.disconnect(); return; }
+                if (!button.isConnected || !visible(button)) continue;
                 attempted.add(a.provider); button.click();
+                if(attempted.size===adapters.length)observer.disconnect();
                 setTimeout(() => chrome.runtime.sendMessage({what:'sm:cookieResult',provider:a.provider,closed:!visible(box)}).catch(() => {}),800);
             }
         } catch { } finally { busy = false; }
     }
     let timer;
-    const observer = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(check,350); });
+    const observer = new MutationObserver(() => { if (!timer) timer = setTimeout(() => { timer = null; check(); },350); });
     chrome.runtime.sendMessage({what:'sm:cookieAllowed'}).then(answer => {
         if (answer?.data !== true) return;
         check(); observer.observe(document.documentElement,{childList:true,subtree:true});
-        setTimeout(() => observer.disconnect(),30000);
+        setTimeout(() => { observer.disconnect(); clearTimeout(timer); },30000);
     }).catch(() => {});
 })();

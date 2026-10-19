@@ -50,7 +50,7 @@ try{
     await launch();
     await scenario('UI, Chinese rules, and permissions diagnostics',async()=>{
         await page.bringToFront();
-        await page.locator('#enable').click();await page.locator('#notice').filter({hasText:'操作完成'}).waitFor();
+        if(await page.locator('#recommended').isEnabled()){await page.locator('#recommended').click();await page.locator('.actionStatus').filter({hasText:'操作完成'}).first().waitFor();}
         const status=await sm('sm:status',{hostname:'localhost'});assert.ok(status.enabledRulesets.includes('chn-0'));assert.equal(status.hasAccess,true);
         await page.screenshot({path:path.join(qa,'01-control-center.png'),fullPage:true});
         await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

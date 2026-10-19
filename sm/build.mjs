@@ -9,7 +9,7 @@ const release = JSON.parse(await readFile(path.join(root,'sm/release.json'),'utf
 await mkdir(out,{recursive:true});
 await cp(path.join(root,'chromium'),out,{recursive:true});
 await mkdir(path.join(out,'sm'),{recursive:true});
-for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','cookies.js','popup.html','popup.js','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','cookies.js','popup.html','popup.js','release.json']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
 await cp(path.join(root,'sm/welcome.html'),path.join(out,'welcome.html'));
 const manifest = JSON.parse(await readFile(path.join(out,'manifest.json'),'utf8'));
 if (manifest.version !== release.engineVersion) throw new Error('Upstream changed: review migration');
@@ -39,6 +39,11 @@ await patch('js/imported-lists.js',"    list.time.updated = Date.now();","    li
 await patch('js/offscreen/compile-filters.js',"    if ( Boolean(text) === false ) { return; }\n\n    const metadata", "    if ( Boolean(text) === false ) { await browser.runtime.sendMessage({ what: 'compileFilters:updateImportedListData', listid: list.id, error: '订阅下载失败或返回空内容' }); return; }\n\n    const metadata");
 await patch('js/offscreen/compile-filters.js',"    if ( Boolean(compiled) === false ) { return; }","    if ( Boolean(compiled) === false ) { await browser.runtime.sendMessage({ what: 'compileFilters:updateImportedListData', listid: list.id, error: '订阅编译失败' }); return; }");
 await patch('js/offscreen/compile-filters.js',"    if ( Boolean(result?.serialized) === false ) {", "    if (result?.stale) { const fresh = await updateList(list); if (fresh) return fresh; }\n    if ( Boolean(result?.serialized) === false ) {");
+await patch('js/background.js', "    case 'getImportedLists': {", "    case 'compileFilters:smStage': { const staged=(await chrome.storage.session.get('sm.stagedLists'))['sm.stagedLists']; return staged ? staged[request.url] ?? {error:'订阅文件未下载'} : null; }\n    case 'getImportedLists': {");
+await patch('js/offscreen/fetch-list.js', '    const response = await fetch(url).catch(( ) => { });', `    const staged = await browser.runtime.sendMessage({what:'compileFilters:smStage',url});
+    if (staged) return staged.content !== undefined ? {url,content:staged.content} : {url,error:staged.error || '订阅文件未下载，保留旧规则'};
+    const response = await fetch(url,{signal:AbortSignal.timeout(15000)}).catch(( ) => { });`);
+await patch('js/offscreen/fetch-list.js', "import * as sfp", "const browser = self.browser || self.chrome;\nimport * as sfp");
 for (const dir of await readdir(path.join(out,'_locales'))) {
     const file = path.join(out,'_locales',dir,'messages.json');
     const strings = JSON.parse(await readFile(file,'utf8'));

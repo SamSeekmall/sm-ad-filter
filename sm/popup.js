@@ -10,11 +10,12 @@ async function load(){
     $('#permission').textContent=state.hasAccess?'网站访问权限可用':'网站访问权限不足，请在扩展详情中检查。';
     $('#mode').value=String(state.level);
     for(const id of ['#apply','#pause','#session','#resume','#stats','#mode'])$(id).disabled=!valid;
+    $('#resume').disabled=!valid||!state.pauses[state.hostname];
     const query=valid?`?site=${encodeURIComponent(state.hostname)}`:'';
     $('#center').href=`../welcome.html${query}`;$('#feedback').href=`../welcome.html${query}#feedback`;
 }
 for(const [id,what,args] of [['#apply','sm:setMode',()=>({level:Number($('#mode').value)})],['#pause','sm:pause',()=>({duration:'10m'})],['#session','sm:pause',()=>({duration:'session'})],['#resume','sm:resume',()=>({})]]){
-    $(id).onclick=async()=>{const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{await send(what,{hostname:state.hostname,...args()});await load();}catch(e){$('#state').textContent=`未完成：${e.message}`;}finally{buttons.forEach(b=>b.disabled=!state?.hostname);}};
+    $(id).onclick=async()=>{const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{await send(what,{hostname:state.hostname,...args()});await load();}catch(e){$('#state').textContent=`未完成：${e.message}`;}finally{buttons.forEach(b=>b.disabled=!state?.hostname);$('#resume').disabled=!state?.pauses[state.hostname];}};
 }
 $('#stats').onclick=async()=>{
     try {
