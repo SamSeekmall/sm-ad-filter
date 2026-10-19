@@ -326,3 +326,15 @@ test('pause records the mode it returns to and supports a 1-hour duration',async
     assert.equal((await send({what:'sm:pause',hostname:'long.example.com',duration:'2h'})).ok,false,'unknown durations are refused');
     await send({what:'sm:resume',hostname:'long.example.com'});assert.deepEqual(modes.complete,['long.example.com']);
 });
+
+test('status requests answer "engine starting" instead of hanging while the upstream engine is still starting',async()=>{
+    await resetWorld();
+    let finish;const ready=new Promise(r=>{finish=r;});let state={ready:false,error:null,phase:'启用过滤规则（首次需编译，可能较慢）',step:3,elapsedMs:4200};
+    createController(engine,ready,undefined,{retryDelays:[0,0],progress:()=>state,startingWaitMs:20});
+    const t=Date.now();const first=await send({what:'sm:popupStatus'});
+    assert.equal(first.ok,true);assert.equal(first.data.engineStarting,true);assert.equal(first.data.step,3);assert.ok(Date.now()-t<1000,'answered quickly');
+    assert.equal((await send({what:'sm:status'})).data.engineStarting,true);
+    state={...state,ready:true};finish();
+    const after=await send({what:'sm:popupStatus'});assert.equal(after.ok,true);assert.equal(after.data.engineStarting,undefined);
+    ctl=createController(engine,Promise.resolve(),undefined,{retryDelays:[0,0]});
+});

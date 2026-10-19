@@ -295,8 +295,25 @@ export function createController(engine, ready, parseDnr, options = {}) {
         try { const result = await handle(r); await ops.finish(r.opId, 'done', { result: ops.compact(result) }); return result; }
         catch (error) { await ops.finish(r.opId, 'failed', { error: error.message }).catch(() => {}); throw error; }
     }
+    // While the upstream engine is still starting, status requests get an honest "still starting" answer after
+    // a short wait instead of hanging until the page gives up; the page polls again.
+    const STARTING = new Set(['sm:popupStatus', 'sm:status']);
+    async function starting(r) {
+        if (!options.progress || !STARTING.has(r.what)) return null;
+        let state = options.progress();
+        if (state.ready) return null;
+        const settled = await Promise.race([ready.then(() => true, () => true), sleep(options.startingWaitMs ?? 2500).then(() => false)]);
+        if (settled) return null;
+        state = options.progress();
+        if (state.ready) return null;
+        return { engineStarting: true, ...state, startError: await read('sm.startError', '') };
+    }
     function dispatch(r) {
         const received = timing.now();
+        if (STARTING.has(r.what) && options.progress && !options.progress().ready) return starting(r).then(answer => answer ?? dispatchNow(r, received));
+        return dispatchNow(r, received);
+    }
+    function dispatchNow(r, received) {
         if (direct.has(r.what)) return ensureInit().then(async () => {
             const started = timing.now();
             const data = await handle(r);

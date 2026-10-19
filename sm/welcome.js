@@ -79,7 +79,9 @@ async function run(button, fn) {
 function on(id, fn) { $(id).addEventListener('click',event=>run(event.currentTarget,fn)); }
 function host() { return hostname($('#site').value); }
 async function refresh() {
-    current = await send('sm:status', $('#site').value.trim() ? {hostname:host()} : {});
+    const answer = await send('sm:status', $('#site').value.trim() ? {hostname:host()} : {});
+    if (answer?.engineStarting) { showStarting(answer); return; }
+    clearTimeout(startingTimer); current = answer;
     $('#version').textContent = `v${current.release.productVersion}`;
     const base=['easylist','easyprivacy'].every(id=>current.enabledRulesets.includes(id)),chinese=current.enabledRulesets.includes('chn-0');
     $('#status').textContent = `默认：${modeNames[current.defaultFilteringMode]} · ${base?'广告与跟踪规则已开启':'广告与跟踪规则未完整开启'} · 中文网站规则${chinese?'已开启':'未开启'}`;
@@ -109,6 +111,13 @@ async function refresh() {
     actionState();
     await showLists();
     await showSpeed();
+}
+let startingTimer;
+function showStarting(v) {
+    const secs = Math.round(v.elapsedMs / 1000), err = v.error || v.startError;
+    $('#status').textContent = err ? `过滤引擎启动出错：${err}` : `过滤引擎正在启动：第 ${v.step} 步“${v.phase}”，已等待 ${secs} 秒${secs >= 60 ? '。时间过长：请在扩展管理页对 SM 净览点“重新加载”，仍不行请在“诊断与关于”复制诊断信息发给我们' : ''}`;
+    $('#siteStatus').textContent = '引擎就绪后自动显示网站设置。';
+    clearTimeout(startingTimer); startingTimer = setTimeout(() => refresh().catch(() => {}), 2000);
 }
 async function showLists() {
     const lists=await send('sm:lists');
@@ -213,10 +222,14 @@ $('#startDone').onclick = () => { try { localStorage.setItem('sm.startDismissed'
 $('#openExtDetails').onclick = event => run(event.currentTarget, async () => { await chrome.tabs.create({url: extensionDetailsUrl()}); });
 // Local diagnostics for support: versions, permissions and states only (no URLs, rule text or history).
 on('#copyDiagnostics',async()=>{
-    await refresh();
-    const text=JSON.stringify({product:current.release.productVersion,extension:chrome.runtime.getManifest().version,engine:current.release.engineVersion,browser:navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/g)?.join(' ')||'unknown',
-        siteAccess:current.hasAccess,userScripts:current.userScripts,enabledRulesetCount:current.enabledRulesets.length,defaultMode:modeNames[current.defaultFilteringMode],pausedSites:Object.keys(current.pauses).length,
-        startError:current.startError||null,lastNotice:current.notice?.message??null,popupTimings:(await chrome.storage.local.get('sm.popupTimings'))['sm.popupTimings']||[],fileProbe:window.smProbe||null,time:new Date().toISOString()},null,2);
+    // Works even when the engine never finished starting: everything here is read without the worker's help.
+    await Promise.race([refresh().catch(()=>{}),wait(3000)]);
+    const local=await chrome.storage.local.get(['sm.popupTimings','sm.engineStart','sm.startError']);
+    const release=current?.release??await fetch(chrome.runtime.getURL('sm/release.json')).then(r=>r.json()).catch(()=>({}));
+    const c=current||{};
+    const text=JSON.stringify({product:release.productVersion,extension:chrome.runtime.getManifest().version,engine:release.engineVersion,browser:navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/g)?.join(' ')||'unknown',
+        engineAnswered:Boolean(current),siteAccess:c.hasAccess??null,userScripts:c.userScripts??null,enabledRulesetCount:c.enabledRulesets?.length??null,defaultMode:current?modeNames[c.defaultFilteringMode]:null,pausedSites:c.pauses?Object.keys(c.pauses).length:null,
+        startError:c.startError||local['sm.startError']||null,lastNotice:c.notice?.message??null,popupTimings:local['sm.popupTimings']||[],engineStart:local['sm.engineStart']||null,fileProbe:window.smProbe||null,time:new Date().toISOString()},null,2);
     await navigator.clipboard.writeText(text);$('#notice').textContent='诊断信息已复制。';setTimeout(()=>{if($('#notice').textContent==='诊断信息已复制。')$('#notice').textContent='';},4000);
 });
 // ---- local popup speed log and file-read probe (diagnostics page) ------------------------------------------
@@ -224,10 +237,12 @@ const median=a=>{const v=a.filter(x=>Number.isFinite(x)).sort((x,y)=>x-y);return
 const maxOf=a=>{const v=a.filter(x=>Number.isFinite(x));return v.length?Math.max(...v):null;};
 async function showSpeed(){
     const samples=(await chrome.storage.local.get('sm.popupTimings'))['sm.popupTimings']||[];
-    if(!samples.length){empty($('#speedSummary'),'还没有记录。点几次工具栏的 SM 图标后再刷新本页。');return null;}
+    const start=(await chrome.storage.local.get('sm.engineStart'))['sm.engineStart'];
+    const startLine=start?`最近一次较慢的引擎启动（${new Date(start.startedWall).toLocaleString()}）：${start.phases.map(p=>`${p.name} ${(p.atMs/1000).toFixed(1)}s`).join(' → ')}${start.error?`；错误：${start.error}`:''}`:null;
+    if(!samples.length){if(startLine)list($('#speedSummary'),[startLine]);else empty($('#speedSummary'),'还没有记录。点几次工具栏的 SM 图标后再刷新本页。');return null;}
     const row=(label,key)=>`${label}：中位 ${median(samples.map(s=>s[key]))??'—'} ms，最慢 ${maxOf(samples.map(s=>s[key]))??'—'} ms`;
     const woke=samples.filter(s=>s.wokeWorker).length;
-    list($('#speedSummary'),[`最近 ${samples.length} 次打开，其中 ${woke} 次需要唤醒后台`,row('从开始加载到显示保护状态','stateVisibleMs'),row('读取弹窗文件','fileReadMs'),row('等待后台引擎就绪','waitForInitMs'),row('与后台往返','roundTripMs')]);
+    list($('#speedSummary'),[`最近 ${samples.length} 次打开，其中 ${woke} 次需要唤醒后台`,row('从开始加载到显示保护状态','stateVisibleMs'),row('读取弹窗文件','fileReadMs'),row('等待后台引擎就绪','waitForInitMs'),row('与后台往返','roundTripMs'),...(startLine?[startLine]:[])]);
     return samples;
 }
 async function probeFiles(){

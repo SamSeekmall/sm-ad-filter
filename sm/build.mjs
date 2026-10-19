@@ -51,7 +51,7 @@ await mkdir(out, { recursive: true });
 try {
 await cp(path.join(root,'chromium'),out,{recursive:true});
 await mkdir(path.join(out,'sm'),{recursive:true});
-for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json','tokens.css']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json','tokens.css','engine-progress.mjs']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
 // Inline only local styles and official Tabler icon nodes: no blocking stylesheet/icon requests.
 const iconNodes = JSON.parse(await readFile(path.join(root,'sm/icons/tabler.json'),'utf8'));
 let popup = await readFile(path.join(root,'sm/popup.html'),'utf8');
@@ -94,9 +94,22 @@ async function patch(file,needle,replacement,purpose = '',count = 1) {
     contract.push({ file, purpose, matches: found, needleSha256: sha(needle).slice(0,16) });
 }
 await patch('js/background.js',"return runtime.getManifest().version;",`return '${release.engineVersion}'; // SM engine migration version`);
-await patch('js/background.js',"runtime.onMessage.addListener((request, sender, callback) => {",`const smController = createController(onMessage, isFullyInitialized, smRulesFromText);\nruntime.onMessage.addListener((request, sender, callback) => {`);
+await patch('js/background.js',"runtime.onMessage.addListener((request, sender, callback) => {",`const smController = createController(onMessage, isFullyInitialized, smRulesFromText, { progress: smProgressSummary });\nruntime.onMessage.addListener((request, sender, callback) => {`);
 await patch('js/background.js',"onMessage(request, sender).then(callback);","smController.wrap(request, sender).then(callback, error => callback({ smError: error.message }));",'extension-page message listener only; the userScripts listener (second match) deliberately stays unwrapped',2);
-await patch('js/background.js',"import { deferredTasks }", "import { createController } from '../sm/worker.mjs';\nimport { rulesFromText as smRulesFromText } from './dnr-parser.js';\nimport { deferredTasks }");
+// Engine start-up checkpoints: the popup shows the current step, diagnostics keep the last start's timeline.
+const phases = [
+    ['    await loadRulesetConfig();', '读取规则配置'],
+    ['        await startSession();', '启动过滤会话'],
+    ['    await loadAdminConfig();', '读取管理策略'],
+    ['    const {\n        stockUpdated,', '启用过滤规则（首次需编译，可能较慢）'],
+    ['    const permissionsUpdated = await syncWithBrowserPermissions();', '核对网站权限'],
+    ['    await processDeferredTasks();', '注册网页脚本'],
+    ['    const scripts = await getRegisteredContentScripts();', '检查网页脚本'],
+];
+for (const [needle, name] of phases) await patch('js/background.js', needle, `    smPhase(${JSON.stringify(name)});\n${needle}`, `start-up checkpoint: ${name}`);
+await patch('js/background.js', "const isFullyInitialized = start().then(( ) => {", "const isFullyInitialized = start().then(( ) => {\n    smEngineDone();", 'start-up checkpoint: ready');
+await patch('js/background.js', "    ubolErr(reason);\n    if ( process.wakeupRun ) { return; }", "    ubolErr(reason);\n    smEngineDone(reason || 'unknown');\n    if ( process.wakeupRun ) { return; }", 'start-up checkpoint: failure reason kept for diagnostics');
+await patch('js/background.js',"import { deferredTasks }", "import { smPhase, smEngineDone, progressSummary as smProgressSummary } from '../sm/engine-progress.mjs';\nimport { createController } from '../sm/worker.mjs';\nimport { rulesFromText as smRulesFromText } from './dnr-parser.js';\nimport { deferredTasks }");
 await patch('js/backup-restore.js','manifest.versionName ?? manifest.version','manifest.version_name ?? manifest.version');
 await patch('popup.html','<main>', '<main><nav class="smToolsNav" aria-label="元素工具导航"><a id="smBack" href="sm/popup.html">← 返回</a><strong>元素工具</strong></nav>');
 await patch('popup.html','</head>', '<style>html#uBO-popup-panel,html#uBO-popup-panel body{width:380px;min-width:380px}.smToolsNav{visibility:visible;pointer-events:auto;position:relative;z-index:1001;background:var(--surface-1);display:flex;align-items:center;gap:24px;padding:14px 18px;border-bottom:1px solid #cbded7;font:16px/1.5 system-ui}.smToolsNav a{color:inherit;text-decoration:none;padding:6px 10px;border:1px solid #8da69c;border-radius:8px}.smToolsNav a:focus-visible{outline:3px solid #b97a0d;outline-offset:2px}</style></head>');
