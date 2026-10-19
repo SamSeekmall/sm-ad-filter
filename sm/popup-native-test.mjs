@@ -31,9 +31,10 @@ assert.equal(result.status,'PASS');assert.match(metrics.state,/已开启保护/)
 // Navigate through the real element-tools link and explicit return link.
 await send('Runtime.evaluate',{expression:"setTimeout(()=>document.querySelector('#elements').click(),0)"});
 async function waitExpression(expression){for(let i=0;i<150;i++){try{const r=await send('Runtime.evaluate',{expression,returnByValue:true});if(r.result.value)return;}catch(e){if(!/context|Cannot find/i.test(e.message))throw e;}await new Promise(r=>setTimeout(r,100));}throw Error('Navigation condition failed: '+expression);}
-await waitExpression("Boolean(document.querySelector('#smBack'))");
+await waitExpression("Boolean(document.querySelector('#smBack'))&&!document.body.classList.contains('loading')&&!document.body.classList.contains('busy')");
 const toolsShot=await send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(out,'element-tools.png'),Buffer.from(toolsShot.data,'base64'));
-await send('Runtime.evaluate',{expression:"setTimeout(()=>document.querySelector('#smBack').click(),0)"});
+const backRect=await send('Runtime.evaluate',{expression:"JSON.stringify((()=>{const r=document.querySelector('#smBack').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})())",returnByValue:true});
+const backPoint=JSON.parse(backRect.result.value);await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...backPoint});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...backPoint});
 await waitExpression("document.querySelector('#state')?.textContent.includes('已开启保护')&&!document.querySelector('#pause')?.disabled");
 result.navigation='elements -> explicit back -> ready PASS';
 // Exercise native popup controls through the same renderer.
