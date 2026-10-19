@@ -1,4 +1,4 @@
-# SM 净览 0.3.0 验证记录
+# SM 净览 0.3.1 验证记录
 
 日期：2026-10-19，Asia/Shanghai。最终浏览器版本、结果和提交以交付目录 JSON 为准。
 
@@ -40,3 +40,9 @@ Wikipedia 与 BBC 两组均能加载正文。搜索、视频和电商页面出�
 网络下载在设置队列外完成；编译与提交仍串行执行以保持配置一致，提交阶段不可取消。下载任务总时限 90 秒，每个请求 15 秒超时，总下载 4 MB、最多 100 个文件、包含层级最多 10 层；超限或失败保留旧规则。未证明最坏情况下编译耗时已消除。
 
 Cookie 检测不缓存用户许可：先匹配候选，再实时查询许可；避免用户关闭后使用过期许可点击。持续 DOM 变化最多每 350 ms 检查一次，30 秒退出。
+
+## 0.3.1 工具栏弹窗修复
+
+0.3.0 的 320 px 检查是普通标签页投影，漏掉浏览器原生弹窗的自适应宽度计算，不能用它证明原生弹窗布局正常。删除依赖初始视口的 max-width:100vw，根元素和正文显式使用 380 px 固有宽度。控制中心响应式规则保留。
+
+新增 node sm/popup-native-test.mjs，通过 chrome.action.openPopup() 创建真实 action 弹窗，用 CDP 读取布局并截图；不使用普通标签页冒充弹窗。Chromium / Edge 各自结果见 native-popup-*.json。日常用户配置仍未修改。参考 Chrome 官方 API：https://developer.chrome.com/docs/extensions/reference/api/action#method-openPopup 。

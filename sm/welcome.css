@@ -8,7 +8,8 @@ main{padding-top:24px}.hero{padding:18px 0 12px;max-width:none}.hero h1{font-siz
 .panel{border-radius:var(--radius-card);padding:24px}.actions{gap:12px;margin:12px 0}.diagnosticDetails{margin-top:20px}summary{cursor:pointer;padding:8px 0;font-weight:650}
 .actionStatus{padding:10px 14px;border-left:4px solid var(--brand);background:#edf5ef;border-radius:6px;overflow-wrap:anywhere}.actionStatus[data-state=error]{color:#8b2020;background:#fff0ee;border-color:#b53030}.actionStatus[data-state=loading]{color:#5b460e;background:#fff7de;border-color:#8b6b12}
 [aria-invalid=true]{border-color:#b53030!important}button[aria-busy=true]{cursor:progress}button:disabled{opacity:.65;cursor:default}
-.popup{width:380px;max-width:100vw;min-width:0}.popup main{padding:18px}.popup .actions{gap:8px}#siteStatus{font-weight:650}#notice:empty{display:none}
+/* Native action popups start with a tiny viewport. Never derive their intrinsic width from vw. */
+html.smPopup,.popup{width:380px;min-width:380px;max-width:none}.popup main{padding:18px}.popup .actions{gap:8px}#siteStatus{font-weight:650}#notice:empty{display:none}
 @media(max-width:620px){main{padding:18px 14px}.panel{padding:18px}.hero{padding-top:12px}.hero h1{font-size:26px}nav{gap:14px;margin-top:16px}}
 @media(prefers-color-scheme:dark){.actionStatus{background:#193a2c;color:#c1ead2}.actionStatus[data-state=error]{background:#422525;color:#ffd4cf}.actionStatus[data-state=loading]{background:#3a321d;color:#ffdfa1}}
 @media(prefers-reduced-motion:reduce){:root{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
