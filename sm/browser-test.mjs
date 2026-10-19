@@ -83,8 +83,8 @@ try{
     await scenario('Cookie reject opt-in, off mode and unsafe label',async()=>{
         await sm('sm:cookieToggle',{enabled:true});await fixture.bringToFront();await fixture.goto(`http://localhost:${port}/cookie`);await fixture.locator('#onetrust-banner-sdk').waitFor({state:'detached'});
         await eventually(async()=>assert.match((await sm('sm:status',{hostname:'localhost'})).cookies.result,/已点击|已消失/));
-        await fixture.goto(`http://localhost:${port}/unsafe`);await fixture.waitForTimeout(1200);assert.equal(await fixture.evaluate(()=>window.rejected===true),false);
-        await reloadAction(()=>sm('sm:setMode',{hostname:'localhost',level:0}));await fixture.goto(`http://localhost:${port}/cookie-disabled`);await fixture.waitForTimeout(1200);
+        await fixture.bringToFront();await fixture.goto(`http://localhost:${port}/unsafe`);await fixture.waitForTimeout(1200);assert.equal(await fixture.evaluate(()=>window.rejected===true),false);
+        await reloadAction(()=>sm('sm:setMode',{hostname:'localhost',level:0}));await eventually(async()=>{await fixture.bringToFront();await fixture.goto(`http://localhost:${port}/cookie-disabled`);});await fixture.waitForTimeout(1200);
         assert.equal(await fixture.locator('#onetrust-banner-sdk').count(),1);await reloadAction(()=>sm('sm:setMode',{hostname:'localhost',level:2}));
     });
     await scenario('Sync opt-in, conflict detection, preview and deletion',async()=>{
