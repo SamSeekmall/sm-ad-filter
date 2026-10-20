@@ -8,7 +8,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = new Set(process.argv.slice(2));
-const finalOut = path.join(root, 'build', 'sm-ad-filter');
+const platform = args.has('--firefox') ? 'firefox' : args.has('--safari') ? 'safari' : 'chromium';
+const finalOut = path.join(root, 'build', platform === 'chromium' ? 'sm-ad-filter' : `sm-ad-filter-${platform}`);
 const out = path.join(root, 'build', `.staging-${process.pid}`);
 const {build:bundle} = await import('./build-tools/node_modules/esbuild/lib/main.js');
 const release = JSON.parse(await readFile(path.join(root,'sm/release.json'),'utf8'));
@@ -51,6 +52,7 @@ await mkdir(out, { recursive: true });
 try {
 await cp(path.join(root,'chromium'),out,{recursive:true});
 await mkdir(path.join(out,'sm'),{recursive:true});
+const platformOverlay = platform === 'firefox' ? await (await import('./firefox/overlay.mjs')).applyFirefoxOverlay({ root, out }) : platform === 'safari' ? await (await import('./safari/overlay.mjs')).applySafariOverlay({ root, out }) : undefined;
 for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json','tokens.css','engine-progress.mjs']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
 // Inline only local styles and official Tabler icon nodes: no blocking stylesheet/icon requests.
 const iconNodes = JSON.parse(await readFile(path.join(root,'sm/icons/tabler.json'),'utf8'));
@@ -74,8 +76,9 @@ await cp(path.join(root,'sm/brand/mark.svg'),path.join(out,'sm/mark.svg'));
 const manifest = JSON.parse(await readFile(path.join(out,'manifest.json'),'utf8'));
 if (manifest.version !== release.engineVersion) throw new Error('Upstream changed: review migration');
 Object.assign(manifest,{name:'SM 净览',short_name:'SM 净览',version:release.extensionVersion,version_name:`SM ${release.productVersion} / uBOL ${release.engineVersion}`,description:'广告过滤、网站排障、临时暂停、规则恢复与可选配置同步。基于 uBlock Origin Lite 的独立修改版。',options_page:'welcome.html'});
+if (platform !== 'chromium') { delete manifest.options_page; manifest.options_ui = platform === 'firefox' ? { page: 'welcome.html', open_in_tab: true } : { page: 'welcome.html' }; }
 manifest.action.default_popup = 'sm/popup.html';
-manifest.optional_permissions = [...new Set([...(manifest.optional_permissions || []),'declarativeNetRequestFeedback'])];
+if (platform !== 'safari') manifest.optional_permissions = [...new Set([...(manifest.optional_permissions || []),'declarativeNetRequestFeedback'])];
 manifest.content_scripts = [...(manifest.content_scripts || []),{matches:['http://*/*','https://*/*'],js:['sm/cookies.js'],run_at:'document_idle'}];
 await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 const contract = [];
@@ -148,14 +151,18 @@ for (const dir of await readdir(path.join(out,'_locales'))) {
 await writeFile(path.join(out,'report.html'),'<!doctype html><meta charset="utf-8"><title>SM 净览反馈</title><a href="welcome.html#feedback">打开 SM 净览反馈中心</a><script type="module" src="sm/report-redirect.js"></script>');
 await writeFile(path.join(out,'sm/report-redirect.js'),"location.replace(chrome.runtime.getURL('welcome.html#feedback'));\n");
 // Resolve the worker graph at build time, not on each service-worker startup.
-const bundled=await bundle({absWorkingDir:out,entryPoints:[path.join(out,'js/background.js')],outfile:path.join(out,'js/background.bundle.js'),bundle:true,format:'esm',platform:'browser',target:'chrome120',minify:false,legalComments:'inline',metafile:true});
+const bundled=await bundle({absWorkingDir:out,entryPoints:[path.join(out,'js/background.js')],outfile:path.join(out,'js/background.bundle.js'),bundle:true,format:'esm',platform:'browser',target:{firefox:'firefox128',safari:'safari18',chromium:'chrome120'}[platform],minify:false,legalComments:'inline',metafile:true});
 if(Object.values(bundled.metafile.outputs).some(x=>x.imports.length))throw Error('Worker bundle has unresolved imports');
-manifest.background.service_worker='js/background.bundle.js';
+if (platform === 'firefox') manifest.background = { scripts: ['js/background.bundle.js'], type: 'module' };
+else if (platform === 'safari') manifest.background = { scripts: ['js/background.bundle.js'], type: 'module', persistent: false };
+else manifest.background.service_worker='js/background.bundle.js';
 await writeFile(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+// Apple store compliance (description length, version shape) on the finished package, exactly as upstream does it.
+if (platform === 'safari') execFileSync(process.execPath,[path.join(root,'sm/safari/patch-extension.js'),`packageDir=${out}`],{stdio:'inherit'});
 await writeFile(path.join(out,'sm/BUNDLE.json'),JSON.stringify({tool:`esbuild ${esbuildVersion}`,inputModules:Object.keys(bundled.metafile.inputs).length,outputs:bundled.metafile.outputs},null,2));
 let localCommit = process.env.SM_LOCAL_COMMIT || 'source-archive';
 if (!process.env.SM_LOCAL_COMMIT) try { localCommit = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); } catch { }
-await writeFile(path.join(out,'SM-BUILD.json'),JSON.stringify({...release,localCommit,license:'GPL-3.0-or-later',upstream:'https://github.com/uBlockOrigin/uBOL-home',upstreamTree:upstream,toolchain,upstreamSeams:contract,modifications:'sm/ overlay; engine version separation; imported-list refresh recovery; localized branding and owned feedback; advanced-rule edits routed through the SM write queue'},null,2)+'\n');
+await writeFile(path.join(out,'SM-BUILD.json'),JSON.stringify({...release,...(platformOverlay && {platform,[`${platform}Overlay`]:platformOverlay}),localCommit,license:'GPL-3.0-or-later',upstream:'https://github.com/uBlockOrigin/uBOL-home',upstreamTree:upstream,toolchain,upstreamSeams:contract,modifications:'sm/ overlay; engine version separation; imported-list refresh recovery; localized branding and owned feedback; advanced-rule edits routed through the SM write queue'},null,2)+'\n');
 for (const file of ['README-SM.md','QA-SM.md','PRIVACY-SM.md','RELEASE-SM.md','FEATURES-SM.md']) await cp(path.join(root,file),path.join(out,file));
 // Exact file set + digests: verify.mjs rejects stale leftovers and silent substitutions.
 const listed = {};

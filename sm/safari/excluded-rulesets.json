@@ -1,0 +1,1 @@
+{ "ids": ["pgl","ublock-badware","urlhaus-full","adguard-spyware-url","pol-3"], "source": "gorhill/uBlock 610c2431d platform/mv3/rulesets.json excludedPlatforms: safari" }
