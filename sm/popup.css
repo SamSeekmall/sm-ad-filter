@@ -68,3 +68,12 @@ footer svg{width:22px;height:22px}
 .srOnly{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 [hidden]{display:none!important}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+/* Touch screens (phones, tablets): the popup is a full-width sheet, targets are at least 44px and form controls
+   are 16px so iOS does not zoom on focus. Desktop pointers keep the fixed 380px popup above. */
+@media(pointer:coarse){
+html.smPopup,body.popup{width:100%;min-width:0}
+main{max-width:560px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left))}
+.duration select,.expanded select{min-height:44px;font-size:16px}
+.checkActions button,.expanded button,.expanded .textButton{min-height:44px}
+footer a{min-height:44px}
+}

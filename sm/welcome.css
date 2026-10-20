@@ -95,3 +95,15 @@ footer{padding:18px 0 0;border-top:1px solid var(--sm-line);margin-top:8px}
   .field{flex-direction:column}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Touch screens: 44px targets, 16px form controls (no iOS focus zoom), safe-area padding. */
+@media(pointer:coarse){
+button,button.secondary,button.danger{min-height:44px}
+button.textButton{min-height:44px;padding:10px 0}
+nav a{min-height:44px;display:flex;align-items:center}
+input:not([type=checkbox]),select,textarea{font-size:16px;min-height:44px}
+input[type=checkbox]{width:24px;height:24px}
+label.check{min-height:44px}
+summary{min-height:44px;padding-top:9px;padding-bottom:9px;box-sizing:border-box}
+.side{padding-top:max(12px,env(safe-area-inset-top));padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right))}
+main{padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-bottom:max(36px,env(safe-area-inset-bottom))}
+}
