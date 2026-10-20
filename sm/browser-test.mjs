@@ -22,7 +22,7 @@ const server=createServer((req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;
 const profile=path.join(tmpdir(),`sm-ad-filter-profile-${browserChannel}-${crypto.randomUUID()}`);
-const options={channel:browserChannel,headless:true,args:[`--disable-extensions-except=${path.join(root,'build/sm-ad-filter')}`,`--load-extension=${path.join(root,'build/sm-ad-filter')}`,'--host-resolver-rules=MAP doubleclick.net 127.0.0.1','--no-proxy-server']};
+const options={channel:browserChannel,headless:true,args:[`--disable-extensions-except=${path.join(root,'build/sm-ad-filter')}`,`--load-extension=${path.join(root,'build/sm-ad-filter')}`,'--host-resolver-rules=MAP doubleclick.net 127.0.0.1','--no-proxy-server','--lang=zh-CN']};
 let context,page,fixture,id;const errors=[];
 async function launch(){
     context=await chromium.launchPersistentContext(profile,options);

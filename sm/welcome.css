@@ -158,3 +158,11 @@ details.fold>.muted:last-child{padding-bottom:18px}
 @media(max-width:900px){.two{grid-template-columns:1fr}}
 @media(max-width:760px){.hero{padding:16px}.heroIcon{width:36px;height:36px}.heroTitle{font-size:19px}.seg{display:grid;width:100%}.seg button{padding:7px 4px}}
 @media(pointer:coarse){.seg button{min-height:44px}.switch{width:52px;height:30px}.switch span{border-radius:15px}.switch span::after{width:24px;height:24px}.switch input:checked+span::after{transform:translateX(22px)}.chip{min-height:36px;padding:6px 14px}details.fold>summary{min-height:52px}}
+/* Language choice under the navigation. */
+.langRow{margin:18px 4px 0}
+.langRow label{display:block;margin:0 0 4px;font-size:12px;font-weight:500;color:var(--sm-muted)}
+.langRow select{width:100%;font-size:13px;padding:6px 8px}
+@media(max-width:760px){.langRow{margin:0 0 8px}.langRow label{display:inline;margin-right:8px}.langRow select{width:auto}}
+/* Text drawn by CSS is not seen by sm/i18n.js; the English wording is set by the page language. */
+html[lang=en] details.fold>summary::after{content:"Show ›"}
+html[lang=en] details.fold[open]>summary::after{content:"Hide"}

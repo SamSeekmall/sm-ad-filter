@@ -14,7 +14,7 @@ const report={date:'2026-10-19',build:JSON.parse(await readFile('build/sm-ad-fil
 let context;
 const begin=performance.now();
 try{
-context=await chromium.launchPersistentContext(path.join(tmpdir(),`sm-ad-filter-audit-${crypto.randomUUID()}`),{channel:'chromium',headless:true,viewport:{width:1280,height:900},args:[`--disable-extensions-except=${path.join(root,'build/sm-ad-filter')}`,`--load-extension=${path.join(root,'build/sm-ad-filter')}`]});
+context=await chromium.launchPersistentContext(path.join(tmpdir(),`sm-ad-filter-audit-${crypto.randomUUID()}`),{channel:'chromium',headless:true,viewport:{width:1280,height:900},args:[`--disable-extensions-except=${path.join(root,'build/sm-ad-filter')}`,`--load-extension=${path.join(root,'build/sm-ad-filter')}`,'--lang=zh-CN']});
 context.setDefaultTimeout(45000);report.browser=context.browser().version();
 const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');const id=new URL(worker.url()).host;
 const page=await context.newPage();await page.goto(`chrome-extension://${id}/welcome.html`);await page.bringToFront();await page.locator('#status').filter({hasText:'默认：'}).waitFor();report.coldLaunchToReadyMs=performance.now()-begin;

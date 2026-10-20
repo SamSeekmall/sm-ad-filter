@@ -53,7 +53,7 @@ try {
 await cp(path.join(root,'chromium'),out,{recursive:true});
 await mkdir(path.join(out,'sm'),{recursive:true});
 const platformOverlay = platform === 'firefox' ? await (await import('./firefox/overlay.mjs')).applyFirefoxOverlay({ root, out }) : platform === 'safari' ? await (await import('./safari/overlay.mjs')).applySafariOverlay({ root, out }) : undefined;
-for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json','tokens.css','engine-progress.mjs']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
+for (const name of ['welcome.css','welcome.js','core.mjs','worker.mjs','updates.mjs','timing.mjs','ops.mjs','history.mjs','pauses.mjs','config.mjs','cookies.js','popup.html','popup.css','popup.js','brand.png','release.json','tokens.css','engine-progress.mjs','i18n.js']) await cp(path.join(root,'sm',name),path.join(out,'sm',name));
 // Inline only local styles and official Tabler icon nodes: no blocking stylesheet/icon requests.
 const iconNodes = JSON.parse(await readFile(path.join(root,'sm/icons/tabler.json'),'utf8'));
 let popup = await readFile(path.join(root,'sm/popup.html'),'utf8');
@@ -75,7 +75,9 @@ await cp(path.join(root,'sm/brand/mark.svg'),path.join(out,'img/ublock.svg'));
 await cp(path.join(root,'sm/brand/mark.svg'),path.join(out,'sm/mark.svg'));
 const manifest = JSON.parse(await readFile(path.join(out,'manifest.json'),'utf8'));
 if (manifest.version !== release.engineVersion) throw new Error('Upstream changed: review migration');
-Object.assign(manifest,{name:'SM 净览',short_name:'SM 净览',version:release.extensionVersion,version_name:`SM ${release.productVersion} / uBOL ${release.engineVersion}`,description:'广告过滤、网站排障、临时暂停、规则恢复与可选配置同步。基于 uBlock Origin Lite 的独立修改版。',options_page:'welcome.html'});
+// Name and description come from the locale files: 'SM 净览' under Chinese, 'SM Clean View' elsewhere.
+const descriptions={zh:'广告过滤、网站排障、临时暂停、规则恢复与可选配置同步。基于 uBlock Origin Lite 的独立修改版。',en:'Ad and tracker filtering with per-site pause and restore. An independent version of uBlock Origin Lite.'};
+Object.assign(manifest,{name:'__MSG_extName__',short_name:'__MSG_extName__',version:release.extensionVersion,version_name:`SM ${release.productVersion} / uBOL ${release.engineVersion}`,description:'__MSG_extShortDesc__',options_page:'welcome.html'});
 if (platform !== 'chromium') { delete manifest.options_page; manifest.options_ui = platform === 'firefox' ? { page: 'welcome.html', open_in_tab: true } : { page: 'welcome.html' }; }
 manifest.action.default_popup = 'sm/popup.html';
 if (platform !== 'safari') manifest.optional_permissions = [...new Set([...(manifest.optional_permissions || []),'declarativeNetRequestFeedback'])];
@@ -116,7 +118,7 @@ await patch('js/background.js',"import { deferredTasks }", "import { smPhase, sm
 await patch('js/backup-restore.js','manifest.versionName ?? manifest.version','manifest.version_name ?? manifest.version');
 await patch('popup.html','<main>', '<main><nav class="smToolsNav" aria-label="元素工具导航"><a id="smBack" href="sm/popup.html">← 返回</a><strong>元素工具</strong></nav>');
 await patch('popup.html','</head>', '<style>html#uBO-popup-panel,html#uBO-popup-panel body{width:380px;min-width:380px}.smToolsNav{visibility:visible;pointer-events:auto;position:relative;z-index:1001;background:var(--surface-1);display:flex;align-items:center;gap:24px;padding:14px 18px;border-bottom:1px solid #cbded7;font:16px/1.5 system-ui}.smToolsNav a{color:inherit;text-decoration:none;padding:6px 10px;border:1px solid #8da69c;border-radius:8px}.smToolsNav a:focus-visible{outline:3px solid #b97a0d;outline-offset:2px}@media(pointer:coarse){html#uBO-popup-panel,html#uBO-popup-panel body{width:100%;min-width:0}.smToolsNav a{min-height:44px;display:inline-flex;align-items:center}}</style></head>');
-await patch('popup.html','</main>','<p style="text-align:center"><a href="welcome.html" target="_blank" rel="noopener">SM 净览 · 控制中心</a></p></main>');
+await patch('popup.html','</main>','<p style="text-align:center"><a href="welcome.html" target="_blank" rel="noopener">SM 净览 · 控制中心</a></p></main><script src="sm/i18n.js"></script>');
 // Upstream pages: SM brand colour instead of uBO blue, SM name on the logo, one backup entry (SM's).
 await append('css/default.css', `\n/* SM 净览: brand palette (green) replaces the upstream blue primary ramp. */\n:root{--primary-20:10 52 42;--primary-30:14 80 64;--primary-40:20 113 92;--primary-50:31 140 114;--primary-60:63 174 140;--primary-70:110 199 170;--primary-80:163 222 201;--primary-90:212 240 229;--primary-95:233 247 241}\n`, 'brand palette');
 await patch('dashboard.html','alt="uBO Lite"','alt="SM 净览"');
@@ -140,12 +142,15 @@ await patch('js/rw-dnr-editor.js',"        await (text.length !== 0\n           
 await patch('js/backup-restore.js',"    if ( dnrRules.length !== 0 ) {\n        await localWrite('userDnrRules', dnrRules.join('\\n'));\n    } else {\n        await localRemove('userDnrRules');\n    }\n    await sendMessage({ what: 'updateUserDnrRules' });","    const smReply = await sendMessage({ what: 'sm:setUserDnrRules', text: dnrRules.join('\\n') });\n    if ( smReply?.ok !== true ) { throw new Error(smReply?.error || '高级网络规则保存失败'); }",'upstream restore writes advanced rules through the SM write queue');
 for (const dir of await readdir(path.join(out,'_locales'))) {
     const file = path.join(out,'_locales',dir,'messages.json');
+    const zh = dir.startsWith('zh'), brand = zh ? 'SM 净览' : 'SM Clean View';
     const strings = JSON.parse(await readFile(file,'utf8'));
-    for (const value of Object.values(strings)) if (typeof value.message === 'string') value.message = value.message.replaceAll('uBlock Origin Lite','SM 净览').replaceAll('uBO Lite','SM 净览');
+    for (const value of Object.values(strings)) if (typeof value.message === 'string') value.message = value.message.replaceAll('uBlock Origin Lite',brand).replaceAll('uBO Lite',brand);
+    if (strings.extName) strings.extName.message = brand;
+    if (strings.extShortDesc) strings.extShortDesc.message = zh ? descriptions.zh : descriptions.en;
     // One vocabulary for the three filtering levels (see sm/core.mjs modeNames).
-    const levels = { zh_CN: ['轻度','标准','强力'], zh_TW: ['輕度','標準','強力'] }[dir];
+    const levels = { zh_CN: ['轻度','标准','强力'], zh_TW: ['輕度','標準','強力'] }[dir] ?? (dir.startsWith('en') ? ['Light','Standard','Strong'] : undefined);
     if (levels) levels.forEach((name, i) => { if (strings[`filteringMode${i + 1}Name`]) strings[`filteringMode${i + 1}Name`].message = name; });
-    if (strings.supportS3P1) strings.supportS3P1.message = 'SM 净览：请使用工具栏弹窗里的“反馈问题”，生成脱敏报告后复制发给 SM 支持渠道。';
+    if (strings.supportS3P1) strings.supportS3P1.message = zh ? 'SM 净览：请使用工具栏弹窗里的“反馈问题”，生成脱敏报告后复制发给 SM 支持渠道。' : 'SM Clean View: use “Send feedback” in the toolbar popup, generate the redacted report and copy it to the SM support channel.';
     await writeFile(file,JSON.stringify(strings,null,2)+'\n');
 }
 await writeFile(path.join(out,'report.html'),'<!doctype html><meta charset="utf-8"><title>SM 净览反馈</title><a href="welcome.html#feedback">打开 SM 净览反馈中心</a><script type="module" src="sm/report-redirect.js"></script>');

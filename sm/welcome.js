@@ -1,5 +1,6 @@
 import { modeNames, durationNames, hostname, reportText } from './core.mjs';
 const $ = selector => document.querySelector(selector);
+const tr = text => window.smI18n ? window.smI18n.tr(text) : text;
 let current, pending, pendingBase, cloudRevision = null, cloudRead = false, filters = [], historyCount = 0, listCount = 0;
 const mutating = new Set(['sm:restore','sm:setMode','sm:pause','sm:resume','sm:preset','sm:undo','sm:removeFilter','sm:cookieToggle','sm:setUserDnrRules','sm:clearRecords']);
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -103,6 +104,7 @@ async function refresh() {
     ]);
     const sitePause=current.pauses[current.hostname];
     $('#siteStatus').textContent = current.hostname ? `${current.hostname} · ${sitePause?`已暂停（${pauseText(sitePause)}）`:modeNames[current.level]}` : '';
+    $('#siteHint').textContent = '输入网站后，可调整过滤或临时暂停。';  // the start-up message replaced it while the engine was still starting
     // While paused the site is "不过滤"; the selector shows the mode it returns to.
     const shown=sitePause&&Number.isInteger(sitePause.level)?sitePause.level:current.level;
     for(const b of document.querySelectorAll('#modeSeg button')){const on=Boolean(current.hostname)&&Number(b.dataset.level)===shown;b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1;}
@@ -170,6 +172,7 @@ async function preview(data) {
 // ---- interrupted-operation notice, first-use checklist, site recovery wizard -------------------------------------
 function showNotice() {
     const box = $('#notice'), notice = current?.notice;
+    delete box.dataset.copied;
     box.replaceChildren();
     if (!notice) return;
     const text = document.createElement('span'); text.textContent = notice.message;
@@ -252,7 +255,7 @@ on('#copyDiagnostics',async()=>{
     const text=JSON.stringify({product:release.productVersion,extension:chrome.runtime.getManifest().version,engine:release.engineVersion,browser:navigator.userAgent.match(/(Edg|Chrome)\/[\d.]+/g)?.join(' ')||'unknown',
         engineAnswered:Boolean(current),siteAccess:c.hasAccess??null,userScripts:c.userScripts??null,enabledRulesetCount:c.enabledRulesets?.length??null,defaultMode:current?modeNames[c.defaultFilteringMode]:null,pausedSites:c.pauses?Object.keys(c.pauses).length:null,
         startError:c.startError||local['sm.startError']||null,lastNotice:c.notice?.message??null,popupTimings:local['sm.popupTimings']||[],engineStart:local['sm.engineStart']||null,fileProbe:window.smProbe||null,time:new Date().toISOString()},null,2);
-    await navigator.clipboard.writeText(text);$('#notice').textContent='诊断信息已复制。';setTimeout(()=>{if($('#notice').textContent==='诊断信息已复制。')$('#notice').textContent='';},4000);
+    await navigator.clipboard.writeText(text);$('#notice').textContent='诊断信息已复制。';$('#notice').dataset.copied='1';setTimeout(()=>{if($('#notice').dataset.copied==='1'){delete $('#notice').dataset.copied;$('#notice').textContent='';}},4000);
 });
 // ---- local popup speed log and file-read probe (diagnostics page) ------------------------------------------
 const median=a=>{const v=a.filter(x=>Number.isFinite(x)).sort((x,y)=>x-y);return v.length?v[Math.floor((v.length-1)/2)]:null;};
@@ -323,7 +326,7 @@ $('#syncEnabled').onchange=event=>run(event.currentTarget,async()=>{await send('
 on('#syncRead',async()=>{const cloud=await send('sm:syncRead');cloudRevision=cloud?.revision??null;cloudRead=true;$('#syncStatus').textContent=cloud?`已读取版本 ${cloud.revision}；未应用。请检查下方备份预览并确认。`:'同步存储当前没有配置。';if(cloud)await preview(cloud.data);});
 on('#syncWrite',async()=>{if(!cloudRead)throw new Error('请先读取云端，避免覆盖未知配置');if(!armed($('#syncWrite'),'再点一次：替换云端配置'))return 'armed';const cloud=await send('sm:syncWrite',{expectedRevision:cloudRevision});cloudRevision=cloud.revision;$('#syncStatus').textContent=`同步存储已写入并读回：${cloud.revision}。其他设备接收情况未验证。`;});
 on('#syncDelete',async()=>{if(!armed($('#syncDelete'),'再点一次确认删除（本机保留）'))return 'armed';await send('sm:syncDelete');cloudRead=false;$('#syncStatus').textContent='已删除同步存储中的配置。';});
-on('#generateReport',async()=>{await refresh();$('#report').value=reportText({site:current.hostname,version:current.release.productVersion,engine:current.release.engineVersion,mode:current.level,rulesets:current.enabledRulesets.length,permissions:current.hasAccess,kind:$('#issueKind').value,description:$('#description').value});$('#reportBlock').hidden=false;actionState();});
+on('#generateReport',async()=>{await refresh();$('#report').value=tr(reportText({site:current.hostname,version:current.release.productVersion,engine:current.release.engineVersion,mode:current.level,rulesets:current.enabledRulesets.length,permissions:current.hasAccess,kind:$('#issueKind').value,description:$('#description').value}));$('#reportBlock').hidden=false;actionState();});
 on('#copyReport',async()=>{if(!$('#report').value)throw new Error('请先生成报告');await navigator.clipboard.writeText($('#report').value);});
 on('#downloadReport',async()=>{if(!$('#report').value)throw new Error('请先生成报告');download('sm-jinglan-report.txt',$('#report').value,'text/plain');});
 on('#sendReport',async()=>{const repo=current.release.repository;if(!repo)throw new Error('尚未配置提交渠道，请复制报告');if(!$('#report').value)throw new Error('请先生成并检查报告');const url=new URL(`${repo}/issues/new`);url.searchParams.set('title',`[SM 净览] ${$('#issueKind').value}`);url.searchParams.set('body',$('#report').value);await chrome.tabs.create({url:url.href});});
@@ -337,4 +340,7 @@ function route(){const id=PAGES.includes(location.hash.slice(1))?location.hash.s
     for(const a of document.querySelectorAll('nav a[data-page]')){if(a.dataset.page===id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
     document.title=`SM 净览 · ${document.getElementById(id).dataset.title}`;scrollTo(0,0);if(id==='about')showSpeed().catch(()=>{});if(id==='rules')loadFilters();}
 addEventListener('hashchange',route);route();
+// Interface language: automatic by default; the choice is kept per browser profile (see sm/i18n.js).
+$('#langSelect').value=window.smI18n?.choice ?? 'auto';
+$('#langSelect').onchange=() => { window.smI18n?.setChoice($('#langSelect').value); location.reload(); };
 run($('#refresh'),refresh);

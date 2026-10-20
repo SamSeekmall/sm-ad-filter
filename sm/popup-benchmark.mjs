@@ -27,7 +27,7 @@ const save=()=>writeFile(path.join(out,'native-timing.json'),JSON.stringify(repo
 const burners=[];
 function startLoad(){if(load!=='high')return;for(let i=0;i<cpus().length;i++)burners.push(spawn(process.execPath,['-e','for(;;){}'],{stdio:'ignore'}));report.system.syntheticLoad=`${burners.length} busy-loop processes`;}
 const stopLoad=()=>{for(const b of burners)b.kill('SIGKILL');};
-const args=dir=>[`--disable-extensions-except=${dir}`,`--load-extension=${dir}`,'--host-resolver-rules=MAP example.com 127.0.0.1','--no-proxy-server'];
+const args=dir=>[`--disable-extensions-except=${dir}`,`--load-extension=${dir}`,'--host-resolver-rules=MAP example.com 127.0.0.1','--no-proxy-server','--lang=zh-CN'];
 async function launch(rig){
     rig.context=await chromium.launchPersistentContext(rig.profile,{channel,headless:true,args:args(rig.extension)});
     rig.context.setDefaultTimeout(60000);
