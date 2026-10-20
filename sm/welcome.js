@@ -28,6 +28,8 @@ async function send(what, data={}) {
 }
 const date = time => time ? new Date(time).toLocaleString() : '尚无成功记录';
 const RECOMMENDED = ['chn-0','easylist','easyprivacy'];
+const ANNOYANCES = ['annoyances-overlays','annoyances-notifications','annoyances-social'];
+const MODE_HINTS = ['本站不过滤。','轻度只拦截网络请求。','标准同时隐藏广告位（推荐）。','强力隐藏范围更广，偶尔影响网页。'];
 const pauseText = p => p.until ? `${new Date(p.until).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} 自动恢复` : '关闭浏览器后恢复';
 function list(target, lines) { target.replaceChildren(...lines.map(text => {const li=document.createElement('li');li.textContent=text;return li;})); }
 function empty(target, text) { const li=document.createElement('li');li.className='empty';li.textContent=text;target.replaceChildren(li); }
@@ -46,11 +48,11 @@ function actionState() {
     if(!current)return;
     let selected=false;try{selected=host()===current.hostname;}catch{}
     const valid=Boolean(current.hostname)&&selected, paused=Boolean(current.pauses[current.hostname]);
-    for(const id of ['mode','setMode','pause10','pause1h','pauseSession','resume'])$('#'+id).disabled=!valid;
+    $('#siteActions').hidden=!valid;$('#siteHint').hidden=valid;
+    for(const id of ['pause10','pause1h','pauseSession','resume'])$('#'+id).disabled=!valid;
     $('#resume').hidden=!paused;$('#resume').disabled=!valid||!paused;
     $('#pause10').hidden=$('#pause1h').hidden=$('#pauseSession').hidden=paused;
-    $('#mode').disabled=!valid||paused;
-    $('#setMode').disabled=!valid||paused||Number($('#mode').value)===current.level;
+    for(const b of document.querySelectorAll('#modeSeg button'))b.disabled=!valid||paused;
     // One entry for the recommended rules: shown only while something is missing.
     const rulesOn=RECOMMENDED.every(id=>current.enabledRulesets.includes(id));
     $('#recommended').disabled=rulesOn;$('#recommendedRow').hidden=rulesOn;
@@ -64,7 +66,7 @@ async function run(button, fn) {
     const scope=button.closest('.panel')||button.parentElement;
     let note=scope.querySelector('.actionStatus');
     if(!note){note=document.createElement('p');note.className='actionStatus';note.setAttribute('role','status');note.setAttribute('aria-live','polite');}
-    const anchor=button.closest('.actions')||button;
+    const anchor=button.closest('.actions')||button.closest('.toggleRow')||button;
     anchor.after(note);note.hidden=false;note.id=`status-${button.id||'action'}`;button.setAttribute('aria-describedby',note.id);
     button.disabled=true;button.setAttribute('aria-busy','true');note.dataset.state='loading';note.textContent='正在处理…';
     try { if(await fn()==='armed'){note.hidden=true;return;} note.dataset.state='success';note.textContent='操作完成。';if(button.id==='refresh'||button.id==='checkSite')note.hidden=true; }
@@ -78,13 +80,21 @@ async function run(button, fn) {
 }
 function on(id, fn) { $(id).addEventListener('click',event=>run(event.currentTarget,fn)); }
 function host() { return hostname($('#site').value); }
+// Overlapping refreshes (two quick switch changes) can answer out of order; only the newest one may paint.
+let refreshTicket = 0;
+const switchWanted = { '#chineseSwitch': () => current.enabledRulesets.includes('chn-0'), '#annoyancesSwitch': () => ANNOYANCES.every(id => current.enabledRulesets.includes(id)) };
+function paintSwitches() { for (const [id, wanted] of Object.entries(switchWanted)) if ($(id).getAttribute('aria-busy') !== 'true') $(id).checked = wanted(); }
 async function refresh() {
+    const ticket = ++refreshTicket;
     const answer = await send('sm:status', $('#site').value.trim() ? {hostname:host()} : {});
+    if (ticket !== refreshTicket) return;
     if (answer?.engineStarting) { showStarting(answer); return; }
     clearTimeout(startingTimer); current = answer;
     $('#version').textContent = `v${current.release.productVersion}`;
     const base=['easylist','easyprivacy'].every(id=>current.enabledRulesets.includes(id)),chinese=current.enabledRulesets.includes('chn-0');
     $('#status').textContent = `默认：${modeNames[current.defaultFilteringMode]} · ${base?'广告与跟踪规则已开启':'广告与跟踪规则未完整开启'} · 中文网站规则${chinese?'已开启':'未开启'}`;
+    $('#heroTitle').textContent = base ? '保护已开启' : '保护未完整开启';$('#hero').dataset.state = base ? 'ok' : 'warn';
+    paintSwitches();
     list($('#diagnostics'),[
         `网站访问权限：${current.hasAccess?'可用':'不足，请在扩展详情中检查网站访问权限'}`,
         `用户脚本权限：${current.userScripts?'可用':'未开放，导入订阅中的部分元素／脚本规则可能不生效；在扩展详情中开启“允许用户脚本”'}`,
@@ -92,17 +102,19 @@ async function refresh() {
         ...(current.startError ? [`后台恢复提示：${current.startError}`] : []),
     ]);
     const sitePause=current.pauses[current.hostname];
-    $('#siteStatus').textContent = current.hostname ? `${current.hostname} · ${sitePause?`已暂停（${pauseText(sitePause)}）`:modeNames[current.level]}` : '输入网站后，可调整过滤或临时暂停。';
+    $('#siteStatus').textContent = current.hostname ? `${current.hostname} · ${sitePause?`已暂停（${pauseText(sitePause)}）`:modeNames[current.level]}` : '';
     // While paused the site is "不过滤"; the selector shows the mode it returns to.
-    $('#mode').value=String(sitePause&&Number.isInteger(sitePause.level)?sitePause.level:current.level);
-    $('#cookies').checked=current.cookieReject;
+    const shown=sitePause&&Number.isInteger(sitePause.level)?sitePause.level:current.level;
+    for(const b of document.querySelectorAll('#modeSeg button')){const on=Boolean(current.hostname)&&Number(b.dataset.level)===shown;b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1;}
+    $('#modeHint').textContent=sitePause?`暂停中，恢复后回到“${Number.isInteger(sitePause.level)?modeNames[sitePause.level]:'原模式'}”。`:current.hostname?MODE_HINTS[current.level]??'':'';
+    if($('#cookies').getAttribute('aria-busy')!=='true')$('#cookies').checked=current.cookieReject;
     $('#cookieResult').textContent=current.cookies ? `${current.cookies.provider}：${current.cookies.result}（${date(current.cookies.time)}）` : '此站点暂无自动拒绝记录；隐藏弹窗不代表已拒绝同意。';
     $('#syncEnabled').checked=current.syncEnabled;
     $('#ruleVersion').textContent=`SM ${current.release.productVersion} · 扩展升级版本 ${chrome.runtime.getManifest().version} · 内置规则/引擎 ${current.release.engineVersion}`;
     const repo=current.release.repository;
     $('#sendHint').textContent=`复制报告后发给${current.release.supportContact||'向你提供本扩展的人'}。${repo?'有 GitHub 账号也可以直接在 GitHub 提交。':''}`;
     $('#releases').hidden=!repo; if(repo) $('#releases').href=`${repo}/releases`;
-    list($('#pauses'),Object.entries(current.pauses).map(([h,p])=>`${h}：已暂停，${pauseText(p)}`));
+    await showChips();
     const history = await send('sm:history'); historyCount=history.length;
     if(history.length)list($('#history'),history.map(h=>`${date(h.time)} · ${h.label}`));else empty($('#history'),'还没有可撤销的修改。');
     showNotice();
@@ -116,8 +128,17 @@ let startingTimer;
 function showStarting(v) {
     const secs = Math.round(v.elapsedMs / 1000), err = v.error || v.startError;
     $('#status').textContent = err ? `过滤引擎启动出错：${err}` : `过滤引擎正在启动：第 ${v.step} 步“${v.phase}”，已等待 ${secs} 秒${secs >= 60 ? '。时间过长：请在扩展管理页对 SM 净览点“重新加载”，仍不行请在“诊断与关于”复制诊断信息发给我们' : ''}`;
-    $('#siteStatus').textContent = '引擎就绪后自动显示网站设置。';
+    $('#heroTitle').textContent = '过滤引擎启动中';$('#hero').dataset.state = 'loading';$('#siteHint').textContent = '引擎就绪后自动显示网站设置。';
     clearTimeout(startingTimer); startingTimer = setTimeout(() => refresh().catch(() => {}), 2000);
+}
+// Quick picks under the site box: sites that are paused right now and sites that have saved hidden elements.
+async function showChips() {
+    const box=$('#siteChips'),items=[];
+    for(const [h,p] of Object.entries(current.pauses))items.push({h,text:`已暂停 · ${h} · ${pauseText(p)}`,kind:'warn'});
+    try{filters=await send('sm:filters');}catch{/* The list is optional here. */}
+    for(const [h,selectors] of filters.slice(0,6))if(!current.pauses[h])items.push({h,text:`已隐藏元素 · ${h} · ${selectors.length} 条`,kind:'ok'});
+    box.replaceChildren(...items.slice(0,8).map(({h,text,kind})=>{const b=document.createElement('button');b.type='button';b.className='chip';b.dataset.kind=kind;b.textContent=text;b.onclick=()=>{$('#site').value=h;$('#checkSite').click();};return b;}));
+    box.hidden=!items.length;
 }
 async function showLists() {
     const lists=await send('sm:lists');
@@ -177,6 +198,7 @@ async function showChecklist() {
 }
 const wizard = { step: 0 };
 function wizardRender() {
+    if (wizard.step !== 0) $('#wizard').open = true;
     const body = $('#wizardBody');
     body.replaceChildren();
     const valid = Boolean(current?.hostname);
@@ -257,10 +279,15 @@ on('#probeFiles',async()=>{const rounds=[];for(let i=0;i<3;i++)rounds.push(await
 on('#clearSpeed',async()=>{await chrome.storage.local.remove('sm.popupTimings');await showSpeed();});
 on('#refresh',refresh);on('#checkSite',refresh);
 $('#site').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('#checkSite').click();}});
-$('#site').addEventListener('input',actionState);$('#mode').addEventListener('change',actionState);
+$('#site').addEventListener('input',actionState);
 on('#recommended',async()=>{await send('sm:preset',{preset:'recommended'});await refresh();});
-on('#quiet',async()=>{await send('sm:preset',{preset:'quiet'});await refresh();});
-on('#setMode',async()=>{await send('sm:setMode',{hostname:host(),level:Number($('#mode').value)});await refresh();});
+// One tap switches the site's mode (the worker refreshes the site); arrow keys move between the four choices.
+for(const b of document.querySelectorAll('#modeSeg button')){
+    b.addEventListener('click',event=>{const level=Number(b.dataset.level);if(!current||b.getAttribute('aria-checked')==='true')return;run(event.currentTarget,async()=>{await send('sm:setMode',{hostname:host(),level});await refresh();});});
+    b.addEventListener('keydown',event=>{const all=[...document.querySelectorAll('#modeSeg button')].filter(x=>!x.disabled),i=all.indexOf(b),step={ArrowRight:1,ArrowDown:1,ArrowLeft:-1,ArrowUp:-1}[event.key];if(!step||i<0)return;event.preventDefault();all[(i+step+all.length)%all.length].focus();});
+}
+// Rule-group switches: a failed change puts the switch back to what the browser actually has.
+for(const [id,preset] of [['#chineseSwitch','chinese'],['#annoyancesSwitch','annoyances']])$(id).onchange=event=>run(event.currentTarget,async()=>{try{await send('sm:preset',{preset,enabled:$(id).checked});await refresh();$(id).checked=switchWanted[id]();}catch(error){await refresh().catch(()=>{});$(id).checked=switchWanted[id]();throw error;}});
 on('#pause10',async()=>{await send('sm:pause',{hostname:host(),duration:'10m'});await refresh();});
 on('#pause1h',async()=>{await send('sm:pause',{hostname:host(),duration:'1h'});await refresh();});
 on('#pauseSession',async()=>{await send('sm:pause',{hostname:host(),duration:'session'});await refresh();});
@@ -279,7 +306,8 @@ on('#checkUpdate',async()=>{
     $('#updateStatus').textContent = result.status==='update_available'?`浏览器检测到新版本 ${result.version}，等待浏览器更新。`:result.status==='throttled'?'浏览器限制了本次检查，请稍后再试。':'浏览器未报告可用更新。本地加载版请前往发布页下载；这不证明发布页没有新版本。';
 });
 let filterPage=0,searchTimer;
-on('#loadFilters',async()=>{filters=await send('sm:filters');filterPage=0;showFilters();});$('#filterSearch').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{filterPage=0;showFilters();},150);};
+async function loadFilters(){try{filters=await send('sm:filters');}catch{/* Shown as empty; the refresh button retries. */}filterPage=0;showFilters();}
+on('#loadFilters',loadFilters);$('#filterSearch').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{filterPage=0;showFilters();},150);};
 on('#filterPrev',()=>{filterPage=Math.max(0,filterPage-1);showFilters();});on('#filterNext',()=>{filterPage++;showFilters();});
 on('#undo',async()=>{await send('sm:undo');await refresh();filters=await send('sm:filters');showFilters();});
 on('#clearHistory',async()=>{if(!armed($('#clearHistory'),'再点一次确认清除（设置保留）'))return 'armed';await send('sm:clearRecords');await refresh();});
@@ -307,6 +335,6 @@ const PAGES=['protection','rules','migration','feedback','about'];
 function route(){const id=PAGES.includes(location.hash.slice(1))?location.hash.slice(1):'protection';
     for(const page of PAGES)document.getElementById(page).hidden=page!==id;
     for(const a of document.querySelectorAll('nav a[data-page]')){if(a.dataset.page===id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}
-    document.title=`SM 净览 · ${document.getElementById(id).dataset.title}`;scrollTo(0,0);if(id==='about')showSpeed().catch(()=>{});}
+    document.title=`SM 净览 · ${document.getElementById(id).dataset.title}`;scrollTo(0,0);if(id==='about')showSpeed().catch(()=>{});if(id==='rules')loadFilters();}
 addEventListener('hashchange',route);route();
 run($('#refresh'),refresh);

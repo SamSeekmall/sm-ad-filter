@@ -13,3 +13,7 @@ Remaining P3: generated logo silhouette and OS font rasterization differ slightl
 ## 2026-10-20 desktop popup redesign
 
 Popup is now 320 px wide (was 380 px) and about 360 px tall (was about 486 px). Protection status with a shield icon comes first; the filter mode is a four-way segmented control that applies on one tap (replaces details + select + "apply"); element tools sit side by side; recent rule hits and the permission note are small text. Mode, pause and resume pass the native popup test in Chromium; light, dark, paused, no-permission and internal-page states were checked with stubbed status. Not a re-run of the original mock comparison: the earlier 380 px mock no longer applies.
+
+## 2026-10-20 control center redesign
+
+"当前网站" now opens with a protection status card; the site box has quick-pick chips (paused sites, sites with hidden elements); the selected site shows a four-way segmented mode control (one tap applies it) and pause buttons; the troubleshooting wizard is folded. "规则" uses switches for Chinese-site rules, reduce-annoyances and Cookie auto-reject; the first two can now be turned off (the worker removes only those rulesets, never the base lists). The full real-browser test passes (14 scenarios, including a new one for the switches and one-tap mode); light, dark, 1180 px and 390 px renders were checked, and no touch target is under 44 px with the touch rules forced on. Not checked on a real phone.

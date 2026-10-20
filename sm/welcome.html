@@ -15,25 +15,32 @@
 <ul id="startChecks" class="checks"></ul>
 <div class="actions"><button id="openExtDetails" class="secondary" hidden>打开扩展详情页</button><button id="startDone" class="secondary">完成设置</button></div>
 </section>
-<section class="panel">
-<p id="status" class="statusLine">正在读取…</p>
+<section class="panel hero" id="hero" data-state="loading">
+<div class="heroRow"><svg class="heroIcon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06"/><path d="M15 19l2 2l4 -4"/></svg><div><p id="heroTitle" class="heroTitle">正在读取…</p><p id="status" class="statusLine">正在读取…</p></div></div>
 <div class="actions inline" id="recommendedRow"><button id="recommended" class="secondary">开启中文网站规则</button></div>
-<label for="site">网站</label>
-<div class="field"><input id="site" type="text" placeholder="例如 example.com" autocomplete="off"><button id="checkSite" class="secondary">查看</button></div>
-<p id="siteStatus"></p>
-<div id="siteActions">
-<div class="modeRow"><label for="mode">过滤模式</label><select id="mode" disabled><option value="0">不过滤</option><option value="1">轻度过滤</option><option value="2">标准过滤（推荐）</option><option value="3">强力过滤</option></select><button id="setMode" disabled>应用</button></div>
+</section>
+<section class="panel" id="sitePanel">
+<h2>查看或调整某个网站</h2>
+<label for="site" class="srOnly">网站</label>
+<div class="field"><input id="site" type="text" placeholder="输入网站，例如 example.com" autocomplete="off"><button id="checkSite">查看</button></div>
+<div id="siteChips" class="chips" hidden></div>
+<div id="siteActions" hidden>
+<p id="siteStatus" class="siteHead"></p>
+<p id="modeLabel" class="fieldLabel">过滤模式（点一下即生效，并刷新该网站）</p>
+<div id="modeSeg" class="seg" role="radiogroup" aria-labelledby="modeLabel"><button type="button" role="radio" data-level="0" aria-checked="false" disabled>不过滤</button><button type="button" role="radio" data-level="1" aria-checked="false" disabled>轻度</button><button type="button" role="radio" data-level="2" aria-checked="false" disabled>标准</button><button type="button" role="radio" data-level="3" aria-checked="false" disabled>强力</button></div>
+<p id="modeHint" class="muted"></p>
+<p class="fieldLabel">临时暂停</p>
 <div class="actions"><button id="pause10" disabled class="secondary">暂停 10 分钟</button><button id="pause1h" disabled class="secondary">暂停 1 小时</button><button id="pauseSession" disabled class="secondary">暂停到关闭浏览器</button><button id="resume" disabled>恢复保护</button></div>
-<ul id="pauses" class="plain"></ul>
 </div>
+<p id="siteHint" class="muted">输入网站后，可调整过滤或临时暂停。</p>
 <details class="help"><summary>三种模式有什么区别？</summary><p class="muted">轻度：只拦截广告和跟踪的网络请求。标准（推荐）：同时隐藏网页上的广告位。强力：隐藏范围更广，偶尔会影响网页功能。暂停到时会自动恢复；“到关闭浏览器”在下次启动时恢复。</p></details>
 <div class="actions small"><button id="refresh" class="textButton">刷新状态</button></div>
 </section>
-<section class="panel" id="wizard">
-<h2>网页显示异常？分步排查</h2>
+<details class="panel fold" id="wizard">
+<summary>网页显示异常？分步排查</summary>
 <div id="wizardBody"></div>
 <p class="muted">更快的方法：在出问题的网页上点工具栏的 SM 图标，暂停后弹窗会直接带你排查。</p>
-</section>
+</details>
 </section>
 
 <!-- 规则 -->
@@ -41,15 +48,12 @@
 <h1>规则</h1>
 <section class="panel">
 <h2>常用规则</h2>
-<p class="muted">中文网站规则覆盖国内常见广告；“减少骚扰”额外过滤浮层、通知请求和 Cookie 横幅。</p>
-<div class="actions"><button id="quiet" class="secondary">开启减少骚扰</button></div>
-</section>
-<section class="panel">
-<h2>Cookie 提示</h2>
-<label class="check"><input id="cookies" type="checkbox"> 自动点击“拒绝全部”</label>
-<p class="muted">支持 OneTrust、Cookiebot 标准提示，不会点击同意。开启后刷新网页。</p>
+<div class="toggleRow"><div><strong id="chineseName">中文网站规则</strong><span class="muted">覆盖国内常见广告</span></div><label class="switch"><input id="chineseSwitch" type="checkbox" role="switch" aria-labelledby="chineseName"><span aria-hidden="true"></span></label></div>
+<div class="toggleRow"><div><strong id="annoyancesName">减少骚扰</strong><span class="muted">额外过滤浮层、通知请求和社交挂件</span></div><label class="switch"><input id="annoyancesSwitch" type="checkbox" role="switch" aria-labelledby="annoyancesName"><span aria-hidden="true"></span></label></div>
+<div class="toggleRow"><div><strong id="cookiesName">自动拒绝 Cookie 提示</strong><span class="muted">支持 OneTrust、Cookiebot 标准提示，只点“拒绝全部”，不会点同意。开启后刷新网页。</span></div><label class="switch"><input id="cookies" type="checkbox" role="switch" aria-labelledby="cookiesName"><span aria-hidden="true"></span></label></div>
 <p id="cookieResult" class="muted"></p>
 </section>
+<div class="two">
 <section class="panel">
 <h2>订阅与更新</h2>
 <p class="muted">内置规则随安装包更新；你自己导入的订阅会按到期时间检查。</p>
@@ -60,10 +64,11 @@
 <section class="panel">
 <h2>已隐藏的元素</h2>
 <p class="muted">用工具栏弹窗里的“以后都隐藏”添加。删除后刷新网页即可看到；误删可在“备份与撤销”里撤销。</p>
-<div class="field"><input id="filterSearch" placeholder="按网站筛选，例如 example.com" aria-label="按网站筛选"><button id="loadFilters" class="secondary">读取已隐藏的元素</button></div>
+<div class="field"><input id="filterSearch" placeholder="按网站筛选，例如 example.com" aria-label="按网站筛选"><button id="loadFilters" class="secondary">刷新列表</button></div>
 <div id="customFilters"></div>
 <div class="actions" id="filterPager" hidden><button id="filterPrev" class="secondary" disabled>上一页</button><button id="filterNext" class="secondary" disabled>下一页</button></div>
 </section>
+</div>
 </section>
 
 <!-- 备份与撤销 -->

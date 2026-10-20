@@ -338,3 +338,16 @@ test('status requests answer "engine starting" instead of hanging while the upst
     const after=await send({what:'sm:popupStatus'});assert.equal(after.ok,true);assert.equal(after.data.engineStarting,undefined);
     ctl=createController(engine,Promise.resolve(),undefined,{retryDelays:[0,0]});
 });
+
+test('rule groups can be switched on and off without touching the base lists',async()=>{
+    await resetWorld();enabled=['easylist','easyprivacy'];
+    assert.equal((await send({what:'sm:preset',preset:'chinese'})).ok,true);assert.ok(enabled.includes('chn-0'));
+    assert.equal((await send({what:'sm:preset',preset:'annoyances'})).ok,true);
+    assert.deepEqual(enabled.filter(id=>id.startsWith('annoyances')).sort(),['annoyances-notifications','annoyances-overlays','annoyances-social']);
+    const off=await send({what:'sm:preset',preset:'chinese',enabled:false});assert.equal(off.ok,true);
+    assert.equal(enabled.includes('chn-0'),false);assert.ok(enabled.includes('easylist')&&enabled.includes('easyprivacy'),'base lists stay');
+    assert.equal((await send({what:'sm:preset',preset:'annoyances',enabled:false})).ok,true);assert.equal(enabled.some(id=>id.startsWith('annoyances')),false);
+    const history=(await send({what:'sm:history'})).data.map(h=>h.label);assert.ok(history.includes('关闭中文网站规则')&&history.includes('关闭减少骚扰'));
+    assert.equal((await send({what:'sm:preset',preset:'recommended',enabled:false})).ok,false,'first-run groups are add-only');
+    assert.equal((await send({what:'sm:undo'})).ok,true);
+});

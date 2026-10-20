@@ -40,6 +40,8 @@ const sm=(what,args={})=>bounded(what,async()=>{await page.bringToFront();return
 const upstream=(what,args={})=>bounded(what,async()=>{await page.bringToFront();return page.evaluate(r=>chrome.runtime.sendMessage(r),{what,...args});});
 async function scenario(name,fn){await fn();results.push({name,status:'PASS'});console.log(`PASS ${name}`);}
 async function eventually(fn){let last;for(let i=0;i<30;i++){try{return await fn();}catch(e){last=e;await new Promise(r=>setTimeout(r,150));}}throw last;}
+// Rule groups are recompiled by the browser; give them up to 20 s.
+async function slowly(fn){let last;for(let i=0;i<100;i++){try{return await fn();}catch(e){last=e;await new Promise(r=>setTimeout(r,200));}}throw last;}
 const request=()=>bounded('fixture request',()=>eventually(async()=>{await fixture.bringToFront();return fixture.evaluate(async url=>{try{const r=await fetch(url,{signal:AbortSignal.timeout(10000)});return {url:r.url,text:await r.text()};}catch(error){if(error.name==='TimeoutError')throw error;return {blocked:true}}},`http://doubleclick.net:${port}/ad.js?t=${Date.now()}`);}));
 const reloadAction=async action=>{
     const before=fixtureLoads;
@@ -51,14 +53,34 @@ try{
     await launch();
     await scenario('UI, Chinese rules, and permissions diagnostics',async()=>{
         await page.bringToFront();
-        await page.locator('#site').fill('');await page.locator('#site').press('Enter');await page.waitForFunction(()=>!document.querySelector('#checkSite').disabled);await page.locator('#siteStatus').filter({hasText:'输入网站后'}).waitFor();assert.equal(await page.locator('#setMode').isDisabled(),true);
-        await page.locator('#site').fill('localhost');await page.locator('#site').press('Enter');await page.waitForFunction(()=>!document.querySelector('#checkSite').disabled);await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();assert.equal(await page.locator('#pause10').isEnabled(),true);assert.equal(await page.locator('#setMode').isDisabled(),true);
-        await page.locator('#mode').selectOption('3');assert.equal(await page.locator('#setMode').isEnabled(),true);await page.locator('#mode').selectOption('2');
+        await page.locator('#site').fill('');await page.locator('#site').press('Enter');await page.waitForFunction(()=>!document.querySelector('#checkSite').disabled);await page.locator('#siteHint').filter({hasText:'输入网站后'}).waitFor();assert.equal(await page.locator('#siteActions').isHidden(),true);
+        await page.locator('#site').fill('localhost');await page.locator('#site').press('Enter');await page.waitForFunction(()=>!document.querySelector('#checkSite').disabled);await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();assert.equal(await page.locator('#pause10').isEnabled(),true);assert.equal(await page.locator('#modeSeg [aria-checked=true]').getAttribute('data-level'),'2');
+        assert.equal(await page.locator('#modeSeg button[data-level="3"]').isEnabled(),true);
         if(await page.locator('#recommended').isEnabled()){await page.locator('#recommended').click();await page.locator('.actionStatus').filter({hasText:'操作完成'}).first().waitFor();}
         const status=await sm('sm:status',{hostname:'localhost'});assert.ok(status.enabledRulesets.includes('chn-0'));assert.equal(status.hasAccess,true);
         await page.screenshot({path:path.join(qa,'01-control-center.png'),fullPage:true});
         await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
         await page.screenshot({path:path.join(qa,'02-narrow-layout.png'),fullPage:true});await page.setViewportSize({width:1280,height:900});
+    });
+    await scenario('Control center: rule switches and one-tap mode',async()=>{
+        await page.goto(`chrome-extension://${id}/welcome.html#rules`);await page.locator('#chineseSwitch').waitFor();
+        await page.waitForFunction(()=>document.querySelector('#chineseSwitch').checked===true);
+        await page.locator('#chineseSwitch').uncheck();
+        await slowly(async()=>assert.equal((await sm('sm:status')).enabledRulesets.includes('chn-0'),false));
+        const base=(await sm('sm:status')).enabledRulesets;assert.ok(base.includes('easylist')&&base.includes('easyprivacy'),'base lists untouched');
+        await page.locator('#chineseSwitch').check();
+        await slowly(async()=>assert.equal((await sm('sm:status')).enabledRulesets.includes('chn-0'),true));
+        await page.locator('#annoyancesSwitch').check();
+        await slowly(async()=>assert.equal((await sm('sm:status')).enabledRulesets.includes('annoyances-overlays'),true));
+        await page.locator('#annoyancesSwitch').uncheck();
+        await slowly(async()=>assert.equal((await sm('sm:status')).enabledRulesets.includes('annoyances-overlays'),false));
+        await page.goto(`chrome-extension://${id}/welcome.html?site=localhost`);await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();
+        await page.locator('#checkSite').click();await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();
+        await page.locator('#modeSeg button[data-level="1"]').click();
+        await slowly(async()=>assert.equal(await upstream('getFilteringMode',{hostname:'localhost'}),1));
+        await page.locator('#modeSeg button[data-level="1"][aria-checked="true"]').waitFor();
+        await sm('sm:setMode',{hostname:'localhost',level:2});
+        await sm('sm:clearRecords'); // the history keeps 10 entries; later scenarios count their own
     });
     await scenario('Network filter, timed pause, resume, normal form',async()=>{
         await fixture.bringToFront();
@@ -145,7 +167,7 @@ try{
         await page.locator('#start').waitFor({state:'visible'});assert.match(await page.locator('#startChecks').innerText(),/网站访问权限：可用/);
         await page.locator('#startDone').click();await page.locator('#start').waitFor({state:'hidden'});
         await page.locator('#site').fill('localhost');await page.locator('#site').press('Enter');await page.locator('#siteStatus').filter({hasText:'localhost'}).waitFor();
-                await page.locator('#wizStart').click();await page.locator('#wizFixed').waitFor();
+        await page.locator('#wizard summary').click();await page.locator('#wizStart').click();await page.locator('#wizFixed').waitFor();
         assert.ok((await sm('sm:status',{hostname:'localhost'})).pauses.localhost,'wizard step 1 paused the site');
         await page.locator('#wizFixed').click();await page.locator('#wizLower').click();await page.locator('#wizDone').waitFor();
         assert.equal(await upstream('getFilteringMode',{hostname:'localhost'}),1,'wizard lowered one level');

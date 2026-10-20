@@ -204,14 +204,24 @@ export function createController(engine, ready, parseDnr, options = {}) {
         }
         case 'sm:resume': await pauses.resume(host, true); return true;
         case 'sm:preset': {
-            const presets = { recommended: ['chn-0', 'easylist', 'easyprivacy'], quiet: ['chn-0', 'easylist', 'easyprivacy', 'annoyances-overlays', 'annoyances-notifications', 'annoyances-social'] };
-            if (!presets[r.preset]) throw new Error('未知配置');
-            return config.mutate('启用推荐规则', async () => {
+            // 'recommended' and 'quiet' only ever add (first-run buttons); 'chinese' and 'annoyances' are the switches on the rules page.
+            const presets = {
+                recommended: { ids: ['chn-0', 'easylist', 'easyprivacy'], on: '启用推荐规则' },
+                quiet: { ids: ['chn-0', 'easylist', 'easyprivacy', 'annoyances-overlays', 'annoyances-notifications', 'annoyances-social'], on: '启用推荐规则' },
+                chinese: { ids: ['chn-0'], on: '启用中文网站规则', off: '关闭中文网站规则' },
+                annoyances: { ids: ['annoyances-overlays', 'annoyances-notifications', 'annoyances-social'], on: '启用减少骚扰', off: '关闭减少骚扰' },
+            };
+            const preset = presets[r.preset];
+            if (!preset) throw new Error('未知配置');
+            const enable = r.enabled !== false;
+            if (!enable && !preset.off) throw new Error('这组规则不能在这里关闭');
+            return config.mutate(enable ? preset.on : preset.off, async () => {
                 const old = await engine({ what: 'getEnabledRulesets' });
-                const enabledRulesets = [...new Set([...old, ...presets[r.preset]])];
+                const enabledRulesets = enable ? [...new Set([...old, ...preset.ids])] : old.filter(id => !preset.ids.includes(id));
                 await engine({ what: 'applyRulesets', enabledRulesets });
                 const after = await engine({ what: 'getEnabledRulesets' });
-                if (!enabledRulesets.every(id => after.includes(id))) throw new Error('部分规则未启用，请检查规则限额');
+                if (enable && !preset.ids.every(id => after.includes(id))) throw new Error('部分规则未启用，请检查规则限额');
+                if (!enable && preset.ids.some(id => after.includes(id))) throw new Error('部分规则未能关闭，请刷新后重试');
                 return after;
             });
         }
