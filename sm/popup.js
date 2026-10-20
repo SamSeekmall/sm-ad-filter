@@ -13,21 +13,24 @@ async function send(what,args={},timeout=12000,onSlow){const opId=mutating.has(w
   throw Error('操作结果未知：后台可能仍在处理。请重新读取确认，勿重复点击。');}
  if(!r?.ok)throw Error(r?.error||'过滤引擎尚未就绪');return r.data;}
 const pauseOf=()=>state?.pauses?.[state.hostname];
-function enabled(){const valid=Boolean(state?.hostname)&&!busy,paused=Boolean(pauseOf());for(const id of ['pause','apply','stats','zap','pick','unpick'])$('#'+id).disabled=!valid;$('#mode').disabled=!valid||paused;$('#apply').disabled=!valid||paused;$('#duration').disabled=!valid;for(const b of document.querySelectorAll('#checkActions button'))b.disabled=busy;}
-function showStatus(text,kind){$('#state').textContent=text;$('#state').dataset.kind=kind;const dot=kind==='active'?'#activeDot':kind==='paused'?'#pausedDot':null;if(dot)$('#state').prepend($(dot).content.cloneNode(true));}
+function enabled(){const valid=Boolean(state?.hostname)&&!busy,paused=Boolean(pauseOf());for(const id of ['pause','stats','zap','pick','unpick'])$('#'+id).disabled=!valid;for(const b of segButtons())b.disabled=!valid||paused;$('#duration').disabled=!valid;for(const b of document.querySelectorAll('#checkActions button'))b.disabled=busy;}
+const segButtons=()=>[...document.querySelectorAll('#mode button')],hints=['本站不过滤。','轻度只拦截网络请求。','标准同时隐藏广告位（推荐）。','强力隐藏范围更广，偶尔影响网页。'];
+// icon: 'active' | 'paused' | 'off' | null. The shield beside the state is decorative; the state text carries the meaning.
+function showStatus(text,kind,icon=null){$('#state').textContent=text;$('#state').dataset.kind=kind;const el=$('#stateIcon');el.replaceChildren();el.dataset.kind=icon==='active'?'active':icon?'paused':'';if(icon)el.append($('#icon-'+icon).content.cloneNode(true));}
 function remaining(p){if(!p.until)return '关闭浏览器后自动恢复';const m=Math.max(1,Math.ceil((p.until-Date.now())/60000));return m>=60?`约 ${Math.round(m/60)} 小时后自动恢复`:`还剩 ${m} 分钟，到时自动恢复`;}
 function detail(text){$('#detail').hidden=!text;$('#detail').textContent=text||'';}
 function paint(){const valid=Boolean(state.hostname),pause=pauseOf(),paused=Boolean(pause);$('#host').textContent=state.hostname||'此页面无法过滤';$('#host').title=state.hostname||'';
- showStatus(valid?(paused?'已暂停过滤':state.level>0?'已开启保护':'此站点未过滤'):'请在普通网站打开',valid?(paused||state.level===0?'paused':'active'):'unavailable');
+ showStatus(valid?(paused?'已暂停过滤':state.level>0?'已开启保护':'此站点未过滤'):'请在普通网站打开',valid?(paused||state.level===0?'paused':'active'):'unavailable',valid?(paused?'paused':state.level>0?'active':'off'):null);
  clearInterval(clock);
  if(paused){detail(remaining(pause));clock=setInterval(()=>{if(pauseOf())detail(remaining(pauseOf()));},30000);}else detail(valid?'':'浏览器内部页面和扩展商店无法过滤');
  // While paused the site is technically "不过滤"; show the mode it returns to instead.
  const back=Number.isInteger(pause?.level)?pause.level:null;
- $('#mode').value=String(paused&&back!==null?back:state.level);$('#modeLabel').textContent=paused?(back!==null?`${names[back]}（恢复后生效）`:'恢复后回到原模式'):names[state.level];
+ const shown=paused&&back!==null?back:state.level;for(const b of segButtons()){const on=valid&&Number(b.dataset.level)===shown;b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1;}
+ $('#modeHint').textContent=!valid?' ':paused?(back!==null?`暂停中，恢复后回到“${names[back]}”。`:'暂停中，恢复后回到原模式。'):hints[state.level];
  $('#pauseLabel').textContent=!valid?'此页面不可用':paused?'恢复保护':state.level===0?'开启此站点':'暂停此站点';$('.iconPause').hidden=paused||state.level===0;$('.iconPlay').hidden=!(paused||state.level===0);$('.duration').hidden=paused||state.level===0;
  // Hiding rules do not apply while the site is paused, so the element tools step aside.
  document.querySelector('.tools').classList.toggle('pausedTools',paused);
- $('#permission').textContent=state.hasAccess?'网站访问权限可用':'网站访问权限不足，请到扩展详情中调整。';
+ $('#permission').hidden=!valid||state.hasAccess;$('#permission').textContent='网站访问权限不足，请到扩展详情中调整。';
  const query=valid?'?site='+encodeURIComponent(state.hostname):'';$('#center').href='../welcome.html'+query;$('#feedback').href='../welcome.html'+query+'#feedback';enabled();performance.mark('sm-popup-ready');document.documentElement.dataset.ready='true';}
 // Everything below the first paint: never delays the protection state.
 async function extras(){if(!state?.hostname)return;
@@ -94,7 +97,9 @@ async function renderCheck(){const ticket=++checkTicket,box=$('#check'),actions=
 $('#pause').onclick=async()=>{if(state?.pauses[state.hostname]){if(await act('sm:resume',{},'已恢复保护，网站已刷新。'))await setCheck(null);renderCheck();}
  else if(state?.level===0)act('sm:setMode',{level:2});
  else{const level=state.level;if(await act('sm:pause',{duration:$('#duration').value},'已暂停，网站已刷新。')){await setCheck({step:'paused',level});renderCheck();}}};
-$('#apply').onclick=()=>act('sm:setMode',{level:Number($('#mode').value)});
+// One tap switches the mode (the worker refreshes the site); arrow keys follow the radio-group pattern.
+for(const b of segButtons()){b.onclick=()=>{const level=Number(b.dataset.level);if(!state?.hostname||pauseOf()||level===state.level)return;act('sm:setMode',{level});};
+ b.onkeydown=e=>{const all=segButtons().filter(x=>!x.disabled),i=all.indexOf(b),step={ArrowRight:1,ArrowDown:1,ArrowLeft:-1,ArrowUp:-1}[e.key];if(!step||i<0)return;e.preventDefault();all[(i+step+all.length)%all.length].focus();};}
 // Element tools run the engine's own on-page scripts directly from here; the popup closes so the page can be clicked.
 const TOOLS={zap:['/js/scripting/tool-overlay.js','/js/scripting/zapper.js'],pick:['/js/scripting/css-procedural-api.js','/js/scripting/tool-overlay.js','/js/scripting/picker.js'],unpick:['/js/scripting/css-procedural-api.js','/js/scripting/tool-overlay.js','/js/scripting/unpicker.js']};
 for(const [id,files] of Object.entries(TOOLS))$('#'+id).onclick=async()=>{if(!state?.hostname||!Number.isInteger(tab?.id))return;try{await chrome.scripting.executeScript({files,target:{tabId:tab.id}});window.close();}catch(e){$('#actionStatus').hidden=false;$('#actionStatus').dataset.error='true';$('#actionStatus').textContent=`无法在此页面使用：${e.message}`;}};

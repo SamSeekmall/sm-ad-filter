@@ -50,13 +50,13 @@ report.slowSubscription.requests=listRequests;
 report.cancel=await page.evaluate(async()=>{const update=chrome.runtime.sendMessage({what:'sm:updateLists'});await new Promise(r=>setTimeout(r,100));const cancel=await chrome.runtime.sendMessage({what:'sm:cancelUpdate'});const result=await update;return{cancel,result,progress:(await chrome.runtime.sendMessage({what:'sm:updateProgress'})).data};});
 assert.equal(report.cancel.cancel.ok,true);assert.equal(report.cancel.progress.state,'cancelled');slow=false;
 console.log('PASS slow subscription head-of-line benchmark');
-const fixture=await context.newPage();await fixture.goto(`http://localhost:${port}/`);const popup=await context.newPage();await popup.setViewportSize({width:380,height:640});await fixture.bringToFront();await popup.goto(`chrome-extension://${id}/sm/popup.html`);await popup.locator('#state').filter({hasText:'已开启保护'}).waitFor({state:'attached'});await popup.bringToFront();await popup.screenshot({path:path.join(out,'05-popup.png')});report.screens.push('05-popup.png');
+const fixture=await context.newPage();await fixture.goto(`http://localhost:${port}/`);const popup=await context.newPage();await popup.setViewportSize({width:320,height:640});await fixture.bringToFront();await popup.goto(`chrome-extension://${id}/sm/popup.html`);await popup.locator('#state').filter({hasText:'已开启保护'}).waitFor({state:'attached'});await popup.bringToFront();await popup.screenshot({path:path.join(out,'05-popup.png')});report.screens.push('05-popup.png');
 report.popup=await popup.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight,mode:document.querySelector('#state').textContent}));
 await page.bringToFront();
 try{await page.evaluate(async()=>{const tab=await chrome.tabs.getCurrent();await chrome.tabs.setZoom(tab.id,2);});report.zoom200=await page.evaluate(()=>({zoomWidth:innerWidth,scrollWidth:document.documentElement.scrollWidth}));assert.ok(report.zoom200.scrollWidth<=report.zoom200.zoomWidth);await page.screenshot({path:path.join(out,'06-zoom-200.png')});await page.evaluate(async()=>{const tab=await chrome.tabs.getCurrent();await chrome.tabs.setZoom(tab.id,1);});}catch(error){report.zoom200={status:'NOT_VERIFIED',error:error.message};}
-await popup.bringToFront();await popup.setViewportSize({width:320,height:640});report.popup320=await popup.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));
-// Native desktop action popup has a 380 px intrinsic width; a 320 px tab is not its host.
-assert.equal(report.popup320.scrollWidth,380);
+await popup.bringToFront();await popup.setViewportSize({width:280,height:640});report.popup320=await popup.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));
+// Native desktop action popup has a 320 px intrinsic width; a narrower tab is not its host.
+assert.equal(report.popup320.scrollWidth,320);
 report.status='COMPLETE';
 }catch(error){process.exitCode=1;report.status='PARTIAL';report.error=error.stack;console.error(error.stack);}finally{await writeFile(path.join(out,'measurements.json'),JSON.stringify(report,null,2));await context?.close();await new Promise(r=>server.close(r));}
 console.log(JSON.stringify({status:report.status,out,samples:report.samples,slowSubscription:report.slowSubscription,cold:report.coldLaunchToReadyMs},null,2));
