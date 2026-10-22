@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     # Packaging with a performance gate that is not MET needs a written reason; it is recorded in the receipt.
-    [string]$PerformanceWaiver = ''
+    [string]$PerformanceWaiver = '',
+    # Recorded in the receipt so the rollback target is explicit.
+    [string]$PreviousVersion = '0.4.7 / d632c6f'
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -52,7 +54,7 @@ try {
     Copy-Item PERFORMANCE-REVIEW-042.md,design-qa.md,sm/site-catalog.json,SUPPORT-SM.md,PILOT-PLAN-SM.md,IMPLEMENTATION-MATRIX-043.md,README-SM.md,QA-SM.md,PRIVACY-SM.md,RELEASE-SM.md,FEATURES-SM.md -Destination $output
     Copy-Item build/qa-v2/browser-test.json -Destination $output
     Copy-Item build/qa-v2-msedge/browser-test.json -Destination (Join-Path $output 'edge-browser-test.json')
-    Copy-Item build/qa-v2/live/results.json -Destination (Join-Path $output 'historical-0.2-live-results.json')
+    if (Test-Path build/qa-v2/live/results.json) { Copy-Item build/qa-v2/live/results.json -Destination (Join-Path $output 'historical-0.2-live-results.json') }
     Copy-Item build/qa-v2/01-control-center.png,build/qa-v2/02-narrow-layout.png,build/qa-v2/03-popup.png -Destination $output
     Copy-Item build/qa-v3-performance/measurements.json -Destination (Join-Path $output 'performance-measurements.json')
     Copy-Item build/qa-v3-performance/02-feedback-error.png,build/qa-v3-performance/04-control-dark.png,build/qa-v3-performance/06-zoom-200.png -Destination $output
@@ -64,6 +66,6 @@ try {
     Copy-Item $gateReceipt -Destination (Join-Path $output 'performance-gate.json')
     Copy-Item build/sm-ad-filter/SM-FILES.json -Destination (Join-Path $output 'SM-FILES.json')
     $hashes = @($extensionZip,$sourceZip) | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path
-    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion='0.4.2 / 0030cf5';hashes=$hashes;performanceGate=$performanceGate;toolchain=(Get-Content build/sm-ad-filter/SM-BUILD.json -Raw | ConvertFrom-Json).toolchain;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
+    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion=$PreviousVersion;hashes=$hashes;performanceGate=$performanceGate;toolchain=(Get-Content build/sm-ad-filter/SM-BUILD.json -Raw | ConvertFrom-Json).toolchain;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
     Get-ChildItem -LiteralPath $output | Select-Object Name,Length
 } finally { Pop-Location }
