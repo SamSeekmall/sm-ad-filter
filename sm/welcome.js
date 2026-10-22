@@ -116,6 +116,8 @@ async function refresh() {
     const repo=current.release.repository;
     $('#sendHint').textContent=`复制报告后发给${current.release.supportContact||'向你提供本扩展的人'}。${repo?'有 GitHub 账号也可以直接在 GitHub 提交。':''}`;
     $('#releases').hidden=!repo; if(repo) $('#releases').href=`${repo}/releases`;
+    if(current.release.source){$('#sourceLink').href=current.release.source;$('#sourceLink').textContent='源码';}
+    if(current.release.privacyPolicy)document.querySelector('footer a[href="PRIVACY-SM.md"]')?.setAttribute('href',current.release.privacyPolicy);
     await showChips();
     const history = await send('sm:history'); historyCount=history.length;
     if(history.length)list($('#history'),history.map(h=>`${date(h.time)} · ${h.label}`));else empty($('#history'),'还没有可撤销的修改。');

@@ -9,10 +9,17 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = new Set(process.argv.slice(2));
 const platform = args.has('--firefox') ? 'firefox' : args.has('--safari') ? 'safari' : 'chromium';
-const finalOut = path.join(root, 'build', platform === 'chromium' ? 'sm-ad-filter' : `sm-ad-filter-${platform}`);
+// --store: the package uploaded to a browser store (publisher links required, internal notes left out).
+const store = args.has('--store');
+const finalOut = path.join(root, 'build', (platform === 'chromium' ? 'sm-ad-filter' : `sm-ad-filter-${platform}`) + (store ? '-store' : ''));
 const out = path.join(root, 'build', `.staging-${process.pid}`);
 const {build:bundle} = await import('./build-tools/node_modules/esbuild/lib/main.js');
 const release = JSON.parse(await readFile(path.join(root,'sm/release.json'),'utf8'));
+if (store) {
+    const missing = ['publisher','homepage','privacyPolicy','source','supportContact'].filter(key => !release[key]);
+    if (missing.length) throw new Error(`Store build needs these sm/release.json fields: ${missing.join(', ')}`);
+    release.channel = 'store';
+}
 const sha = data => createHash('sha256').update(data).digest('hex');
 const textual = /\.(js|mjs|json|html|css|md|txt|svg)$/i;
 // CRLF checkouts must hash like LF ones; binaries are hashed as stored.
@@ -77,7 +84,7 @@ const manifest = JSON.parse(await readFile(path.join(out,'manifest.json'),'utf8'
 if (manifest.version !== release.engineVersion) throw new Error('Upstream changed: review migration');
 // Name and description come from the locale files: 'SM 净览' under Chinese, 'SM Clean View' elsewhere.
 const descriptions={zh:'广告过滤、网站排障、临时暂停、规则恢复与可选配置同步。基于 uBlock Origin Lite 的独立修改版。',en:'Ad and tracker filtering with per-site pause and restore. An independent version of uBlock Origin Lite.'};
-Object.assign(manifest,{name:'__MSG_extName__',short_name:'__MSG_extName__',version:release.extensionVersion,version_name:`SM ${release.productVersion} / uBOL ${release.engineVersion}`,description:'__MSG_extShortDesc__',options_page:'welcome.html'});
+Object.assign(manifest,{name:'__MSG_extName__',short_name:'__MSG_extName__',version:release.extensionVersion,version_name:`SM ${release.productVersion} / uBOL ${release.engineVersion}`,description:'__MSG_extShortDesc__',author:release.publisher||manifest.author,...(release.homepage&&{homepage_url:release.homepage}),options_page:'welcome.html'});
 if (platform !== 'chromium') { delete manifest.options_page; manifest.options_ui = platform === 'firefox' ? { page: 'welcome.html', open_in_tab: true } : { page: 'welcome.html' }; }
 manifest.action.default_popup = 'sm/popup.html';
 if (platform !== 'safari') manifest.optional_permissions = [...new Set([...(manifest.optional_permissions || []),'declarativeNetRequestFeedback'])];
@@ -122,6 +129,12 @@ await patch('popup.html','</main>','<p style="text-align:center"><a href="welcom
 // Upstream pages: SM brand colour instead of uBO blue, SM name on the logo, one backup entry (SM's).
 await append('css/default.css', `\n/* SM 净览: brand palette (green) replaces the upstream blue primary ramp. */\n:root{--primary-20:10 52 42;--primary-30:14 80 64;--primary-40:20 113 92;--primary-50:31 140 114;--primary-60:63 174 140;--primary-70:110 199 170;--primary-80:163 222 201;--primary-90:212 240 229;--primary-95:233 247 241}\n`, 'brand palette');
 await patch('dashboard.html','alt="uBO Lite"','alt="SM 净览"');
+await patch('dashboard.html','</body>','<script src="sm/i18n.js"></script></body>','SM-injected text follows the interface language');
+// About pane: our privacy policy, documentation and source; upstream authorship and credits stay as they are.
+await patch('dashboard.html','<a href="https://github.com/uBlockOrigin/uBOL-home/wiki/Privacy-policy" data-i18n="aboutPrivacyPolicy">',`<a href="${release.privacyPolicy||'PRIVACY-SM.md'}" data-i18n="aboutPrivacyPolicy">`,'about: SM privacy policy');
+await patch('dashboard.html','<a href="https://github.com/uBlockOrigin/uBOL-home/wiki" data-i18n="aboutDocumentation">',`<a href="${release.homepage||'welcome.html'}" data-i18n="aboutDocumentation">`,'about: SM documentation');
+await patch('dashboard.html','<a href="https://github.com/uBlockOrigin/uBOL-home/releases" data-i18n="aboutChangelog">',`<a href="${release.source?release.source.replace(/\/$/,'')+'/releases':'https://github.com/uBlockOrigin/uBOL-home/releases'}" data-i18n="aboutChangelog">`,'about: SM changelog');
+await patch('dashboard.html','<div class="li">Copyright (c) Raymond Hill 2014-present</div>',`<div class="li">Copyright (c) Raymond Hill 2014-present</div><div class="li">SM 净览 / SM Clean View: modified by ${release.publisher||'SM'} (GPL-3.0)${release.source?` · <a href="${release.source}">source</a>`:''}</div>`,'about: modification notice');
 await patch('dashboard.html','<div>\n        <h3 data-i18n="settingsBackupRestoreLabel">_</h3>','<div class="smBackupPointer"><h3>备份与恢复</h3><p>备份、导入、撤销和同步统一在 <a href="welcome.html#migration" target="_blank">SM 控制中心 → 备份与撤销</a>：导入前可预览，失败会自动回退。</p></div>\n    <div hidden>\n        <h3 data-i18n="settingsBackupRestoreLabel">_</h3>','single backup entry: upstream backup/restore/reset hidden, pointed at the SM control center');
 await patch('js/imported-lists.js','export async function updateImportedLists() {','export async function updateImportedLists(force = false) {');
 await patch('js/imported-lists.js','if ( updateTime > now ) { continue; }','if ( !force && updateTime > now ) { continue; }');
@@ -168,7 +181,15 @@ await writeFile(path.join(out,'sm/BUNDLE.json'),JSON.stringify({tool:`esbuild ${
 let localCommit = process.env.SM_LOCAL_COMMIT || 'source-archive';
 if (!process.env.SM_LOCAL_COMMIT) try { localCommit = execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); } catch { }
 await writeFile(path.join(out,'SM-BUILD.json'),JSON.stringify({...release,...(platformOverlay && {platform,[`${platform}Overlay`]:platformOverlay}),localCommit,license:'GPL-3.0-or-later',upstream:'https://github.com/uBlockOrigin/uBOL-home',upstreamTree:upstream,toolchain,upstreamSeams:contract,modifications:'sm/ overlay; engine version separation; imported-list refresh recovery; localized branding and owned feedback; advanced-rule edits routed through the SM write queue'},null,2)+'\n');
-for (const file of ['README-SM.md','QA-SM.md','PRIVACY-SM.md','RELEASE-SM.md','FEATURES-SM.md']) await cp(path.join(root,file),path.join(out,file));
+// Internal notes (QA, release, feature tracking) are for local trial packages only; a store package carries the privacy policy.
+for (const file of store ? ['PRIVACY-SM.md'] : ['README-SM.md','QA-SM.md','PRIVACY-SM.md','RELEASE-SM.md','FEATURES-SM.md']) await cp(path.join(root,file),path.join(out,file));
+// The privacy policy names the support contact and the source address of this build.
+{
+    const policy = path.join(out,'PRIVACY-SM.md');
+    const text = (await readFile(policy,'utf8')).replaceAll('{{SUPPORT_CONTACT}}', release.supportContact || '向你提供本扩展的人 / whoever gave you this extension').replaceAll('{{SOURCE_URL}}', release.source || 'https://github.com/uBlockOrigin/uBOL-home');
+    if (text.includes('{{')) throw new Error('PRIVACY-SM.md has an unfilled placeholder');
+    await writeFile(policy, text);
+}
 // Exact file set + digests: verify.mjs rejects stale leftovers and silent substitutions.
 const listed = {};
 for (const rel of await walkFiles(out)) { const info = await stat(path.join(out, rel)); listed[rel] = { bytes: info.size, sha256: sha(await readFile(path.join(out, rel))) }; }
