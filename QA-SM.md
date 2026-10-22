@@ -70,3 +70,20 @@ Cookie 检测不缓存用户许可：先匹配候选，再实时查询许可；�
 0.3.0 的 320 px 检查是普通标签页投影，漏掉浏览器原生弹窗的自适应宽度计算，不能用它证明原生弹窗布局正常。删除依赖初始视口的 max-width:100vw，根元素和正文显式使用 380 px 固有宽度。控制中心响应式规则保留。
 
 新增 node sm/popup-native-test.mjs，通过 chrome.action.openPopup() 创建真实 action 弹窗，用 CDP 读取布局并截图；不使用普通标签页冒充弹窗。Chromium / Edge 各自结果见 native-popup-*.json。日常用户配置仍未修改。参考 Chrome 官方 API：https://developer.chrome.com/docs/extensions/reference/api/action#method-openPopup 。
+
+## 0.4.7 补测与门禁校准（2026-10-22）
+
+Edge 155（headless）：浏览器测试 14 项通过、原生弹窗测试通过。Chromium 156：同上，另加界面性能测量（`performance-test.mjs`，该脚本自 0.4.4 起引用了已删除的仓库地址输入框而一直失败，本次修正为用站点输入框的错误提示）。
+
+弹窗延迟（`popup-benchmark.mjs`，每浏览器 100 预热 + 100 唤醒 + 10 重启，隔离配置、本地非同步目录、i5-7300HQ / 16 GB）：
+
+| 浏览器 | 预热 p50 / p95 / 最大 | 唤醒 p50 / p95 / 最大 | 重启 p95 | 弹窗内 p95（预热 / 唤醒） |
+| --- | --- | --- | --- | --- |
+| Edge 155 | 139 / 495 / 1090 ms | 193 / 556 / 1318 ms | 2697 ms | 360 / 436 ms |
+| Chromium 156 | 413 / 1237 / 4790 ms | 460 / 996 / 2573 ms | 5034 ms | 480 / 430 ms |
+
+Chromium 另有一次紧接 Edge 套件之后、空闲内存约 2 GB 时的运行：预热 p95 3312 ms、最大 6716 ms，不符合测量规程，记录为 `popup-timing-chromium-run1-noisy.json`，不作门禁依据。尾部时间集中在浏览器创建弹窗窗口（open acknowledgement），扩展自身从弹窗文档开始到显示状态的 p95 在 360–480 ms。
+
+门禁 `sm/perf-gates.json` 改为 CALIBRATED：端到端 预热/唤醒 p95 ≤ 1500 ms、最大 ≤ 5000 ms，重启 p95 ≤ 6000 ms、最大 ≤ 8000 ms；新增弹窗内 p95 ≤ 1000 ms（预热、唤醒）作为扩展代码的回归守卫；任何失败或超时样本都使门禁不通过。`perf-gate.mjs` 现在从原始样本重新计算分组，不信任报告里写好的汇总。0.4.7 在两个浏览器上均 MET。
+
+顺带修正：`hostname()` 现在拒绝浏览器会百分号编码的主机名（Chrome 把 `not a host` 解析成 `not%20a%20host` 而不报错），并把 URL 解析错误统一成"网站地址无效"。

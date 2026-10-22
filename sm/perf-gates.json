@@ -1,11 +1,30 @@
 {
-  "status": "UNCALIBRATED_PROPOSAL",
-  "note": "Initial targets proposed by the 2026-10-19 architecture review. They are not measured capabilities and have not been calibrated on a reference device. Recalibrate from >=100 samples per group per browser, then change status to CALIBRATED with the device named.",
+  "status": "CALIBRATED",
+  "calibratedOn": "2026-10-22",
+  "device": "Intel Core i5-7300HQ (4 cores), 16 GB RAM, Windows 11 10.0.26200; Playwright Chromium 156.0.8078.4 (headless) and Microsoft Edge 155.0.4283.62 (headless), extension loaded from a local non-synced folder",
+  "basis": "0.4.7 (d632c6f): 100 warm + 100 wake + 10 restart samples per browser (Chromium measured twice). Edge: warm p95 495 ms / max 1090, wake p95 556 / max 1318, restart p95 2697. Chromium: warm p95 1237 / max 4790, wake p95 996 / max 2573, restart p95 5034 on the quiet run; a run started within a minute of the Edge suite with about 2 GB of free memory saw warm p95 3312 / max 6716. In every run the tail sits in the browser creating the popup window (open acknowledgement), not in extension code: in-popup p95 was 360-480 ms warm and 430-440 ms wake on the quiet runs.",
+  "protocol": "Run each browser on its own on an otherwise idle machine with at least 3 GB of free memory and no other browser running; wait a minute after any other test suite; never from a OneDrive or other synced folder. A run outside this protocol is not a gate result.",
+  "note": "End-to-end limits are set with headroom for browser-side window creation on this device; the in-popup limits are the regression guard for extension code (popup document start to protection state visible). Any failed or timed-out sample fails the gate. Recalibrate when the reference device or the browser builds change.",
   "maxFailureRate": 0,
-  "minimumSamples": { "warm": 100, "wake": 100, "restart": 10 },
+  "minimumSamples": {
+    "warm": 100,
+    "wake": 100,
+    "restart": 10
+  },
   "limits": {
-    "warm": { "p95Ms": 1000, "maxMs": 3000 },
-    "wake": { "p95Ms": 2000, "maxMs": 5000 },
-    "restart": { "p95Ms": 3000, "maxMs": 8000 }
+    "warm": {
+      "p95Ms": 1500,
+      "maxMs": 5000,
+      "inPopupP95Ms": 1000
+    },
+    "wake": {
+      "p95Ms": 1500,
+      "maxMs": 5000,
+      "inPopupP95Ms": 1000
+    },
+    "restart": {
+      "p95Ms": 6000,
+      "maxMs": 8000
+    }
   }
 }

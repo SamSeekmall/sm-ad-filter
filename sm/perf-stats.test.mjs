@@ -25,8 +25,22 @@ test('a single multi-second outlier fails the gate through the max limit even if
     const verdict=evaluate(groups,gates);assert.equal(verdict.groups.warm.verdict,'NOT_MET');assert.match(verdict.groups.warm.reasons[0],/max 6994/);assert.equal(verdict.overall,'NOT_MET');
 });
 test('any failed sample fails the gate; clean complete data is MET',()=>{
-    const clean=n=>summarize(Array.from({length:n},()=>sample(400)));
+    // Calibrated gates also look at in-popup time, so a clean sample carries the popup's own timing.
+    const clean=n=>summarize(Array.from({length:n},()=>sample(400,{timing:{stateVisibleMs:150}})));
     assert.equal(evaluate({warm:clean(100),wake:clean(100),restart:clean(10)},gates).overall,'MET');
     const broken=summarize([...Array.from({length:99},()=>sample(400)),{ok:false,timedOut:true}]);
     assert.equal(evaluate({warm:broken,wake:clean(100),restart:clean(10)},gates).groups.warm.verdict,'NOT_MET');
+});
+test('in-popup time is gated separately from the browser-side window creation',()=>{
+    const withTiming=(total,visible)=>sample(total,{timing:{stateVisibleMs:visible}});
+    const clean=n=>summarize(Array.from({length:n},()=>withTiming(400,120)));
+    const s=summarize([...Array.from({length:99},()=>withTiming(400,120)),withTiming(900,2500)]);
+    assert.equal(s.inPopupN,100);assert.equal(s.inPopupMax,2500);
+    const limits={...gates,limits:{...gates.limits,warm:{...gates.limits.warm,inPopupP95Ms:1000}}};
+    assert.equal(evaluate({warm:clean(100),wake:clean(100),restart:clean(10)},limits).overall,'MET');
+    const slowInside=summarize(Array.from({length:100},(_,i)=>withTiming(600,i<90?200:1800)));
+    const verdict=evaluate({warm:slowInside,wake:clean(100),restart:clean(10)},limits);
+    assert.equal(verdict.groups.warm.verdict,'NOT_MET');assert.match(verdict.groups.warm.reasons[0],/in-popup p95/);
+    const noTiming=summarize(Array.from({length:100},()=>sample(400)));
+    assert.equal(evaluate({warm:noTiming,wake:clean(100),restart:clean(10)},limits).groups.warm.verdict,'INSUFFICIENT_SAMPLES');
 });

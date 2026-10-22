@@ -28,3 +28,7 @@ test('report strips path, query, fragment, and disallows credentials',()=>{
 test('canonical state comparison ignores object key order, retains rule order',()=>{
     assert.equal(canonical({b:2,a:1}),canonical({a:1,b:2}));assert.notEqual(canonical(['a','b']),canonical(['b','a']));
 });
+test('hostnames the browser would percent-encode are rejected, not sent to the engine',()=>{
+    for(const bad of ['not a host','exa mple.com','https://a b.example.com/x']) assert.throws(()=>hostname(bad),/网站地址无效/,bad);
+    assert.equal(hostname('Example.COM'),'example.com');assert.equal(hostname('https://xn--fsq.example/path'),'xn--fsq.example');
+});

@@ -6,10 +6,14 @@ export const percentile = (sortedAscending, p) => {
 // Failures and timeouts are counted, never dropped: a sample that never reached "state visible" is a result.
 export function summarize(samples) {
     const ok = samples.filter(s => s.ok).map(s => s.stateObservedMs).sort((a, b) => a - b);
+    // In-popup time (popup document start -> protection state visible): what the extension itself controls.
+    // End-to-end time also contains the browser creating the popup window, which no extension code can speed up.
+    const inPopup = samples.filter(s => s.ok && Number.isFinite(s.timing?.stateVisibleMs)).map(s => s.timing.stateVisibleMs).sort((a, b) => a - b);
     const round = value => value === null ? null : Math.round(value);
     return {
         n: samples.length, failures: samples.filter(s => !s.ok).length, timeouts: samples.filter(s => s.timedOut).length,
         min: round(ok[0] ?? null), median: round(percentile(ok, 0.5)), p90: round(percentile(ok, 0.9)), p95: round(percentile(ok, 0.95)), max: round(ok.at(-1) ?? null),
+        inPopupN: inPopup.length, inPopupMedian: round(percentile(inPopup, 0.5)), inPopupP95: round(percentile(inPopup, 0.95)), inPopupMax: round(inPopup.at(-1) ?? null),
     };
 }
 // Each group ends MET, NOT_MET or INSUFFICIENT_SAMPLES. A tail percentile needs enough samples to mean anything.
@@ -24,6 +28,10 @@ export function evaluate(groups, gates) {
         if (failureRate > gates.maxFailureRate) hard.push(`${g.failures} of ${g.n} samples failed or timed out`);
         if (limit.p95Ms !== undefined && g.p95 !== null && g.p95 > limit.p95Ms) hard.push(`p95 ${g.p95} ms exceeds ${limit.p95Ms} ms`);
         if (limit.maxMs !== undefined && g.max !== null && g.max > limit.maxMs) hard.push(`max ${g.max} ms exceeds ${limit.maxMs} ms`);
+        if (limit.inPopupP95Ms !== undefined) {
+            if (!g.inPopupN) reasons.push('no in-popup timing in the samples');
+            else if (g.inPopupP95 > limit.inPopupP95Ms) hard.push(`in-popup p95 ${g.inPopupP95} ms exceeds ${limit.inPopupP95Ms} ms`);
+        }
         verdicts[name] = hard.length ? { verdict: 'NOT_MET', reasons: [...hard, ...reasons] } : reasons.length ? { verdict: 'INSUFFICIENT_SAMPLES', reasons } : { verdict: 'MET', reasons: [] };
     }
     const all = Object.values(verdicts).map(v => v.verdict);

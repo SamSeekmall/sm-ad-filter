@@ -5,7 +5,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluate } from './perf-stats.mjs';
+import { evaluate, summarize } from './perf-stats.mjs';
 const argv = process.argv.slice(2);
 const take = flag => { const i = argv.indexOf(flag); return i < 0 ? null : argv.splice(i, 2)[1]; };
 const commit = take('--commit'), outFile = take('--out');
@@ -18,8 +18,9 @@ for (const file of argv) {
     if (report.schema !== 3) problems.push('report is not schema 3 (segment timings, percentile groups)');
     if (report.status !== 'COMPLETE') problems.push(`harness status ${report.status}`);
     if (commit && current?.build?.localCommit !== commit) problems.push('report was produced for another commit');
-    const evaluation = current ? evaluate(current.groups ?? {}, gates) : { overall: 'INSUFFICIENT_SAMPLES', groups: {} };
-    results.push({ file, channel: report.channel, load: report.config?.load, device: report.system?.cpuModel, problems, ...evaluation, overall: problems.length ? 'NOT_MET' : evaluation.overall });
+    const groups = current ? Object.fromEntries(Object.keys(gates.limits).map(kind => [kind, summarize((current.samples ?? []).filter(s => s.kind === kind))])) : {};
+    const evaluation = current ? evaluate(groups, gates) : { overall: 'INSUFFICIENT_SAMPLES', groups: {} };
+    results.push({ file, channel: report.channel, browserVersion: report.browserVersion, load: report.config?.load, device: report.system?.cpuModel, freeMemMBEnd: report.system?.freeMemMBEnd, commit: current?.build?.localCommit, measured: groups, problems, ...evaluation, overall: problems.length ? 'NOT_MET' : evaluation.overall });
 }
 const overall = results.length && results.every(r => r.overall === 'MET') ? 'MET' : results.some(r => r.overall === 'NOT_MET') ? 'NOT_MET' : 'INSUFFICIENT_SAMPLES';
 const receipt = { gateStatus: gates.status, overall, results };

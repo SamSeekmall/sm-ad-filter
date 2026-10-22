@@ -6,8 +6,10 @@ export const durationNames = { '10m': '10 分钟', '1h': '1 小时', session: '�
 export const modeKeys = ['none', 'basic', 'optimal', 'complete'];
 export function hostname(value) {
     if (typeof value !== 'string' || value.length > 253) throw new Error('网站地址无效');
-    const url = new URL(value.includes('://') ? value : `https://${value}`);
+    let url;
+    try { url = new URL(value.includes('://') ? value : `https://${value}`); } catch { throw new Error('网站地址无效'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || !url.hostname || ['all-urls','*'].includes(url.hostname)) throw new Error('仅支持 HTTP / HTTPS 网站');
+    if (/[^A-Za-z0-9.-[]:]/.test(url.hostname)) throw new Error('网站地址无效');
     return url.hostname.toLowerCase();
 }
 export function related(a, b) { return a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`); }
