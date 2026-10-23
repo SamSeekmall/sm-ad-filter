@@ -59,6 +59,7 @@ Block ads and trackers on web pages, with per-site controls to pause or adjust t
 
 ## Support
 
-- Support contact: https://github.com/SamSeekmall/sm-ad-filter/issues
+- Support contact: sam@seekmall.ph
+- Bug reports: https://github.com/SamSeekmall/sm-ad-filter/issues
 - Homepage: https://samseekmall.github.io/sm-ad-filter/
 - Privacy policy: https://samseekmall.github.io/sm-ad-filter/privacy.html

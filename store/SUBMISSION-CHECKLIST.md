@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 源代码公开方式 | 仓库 `SamSeekmall/sm-ad-filter` 已公开（2026-10-23）。 | 完成 |
 | 隐私政策网址 | https://samseekmall.github.io/sm-ad-filter/privacy.html （GitHub Pages，`gh-pages` 分支，由 `store/site/build-site.mjs` 生成）。 | 完成 |
-| 支持联系方式 | 暂用 GitHub Issues：https://github.com/SamSeekmall/sm-ad-filter/issues 。若改用邮箱，改 `sm/release.json` 的 `supportContact` 后重建站点和商店包。另外两家商店的开发者账号本身也需要一个联系邮箱。 | 暂定 |
+| 支持联系方式 | 邮箱 sam@seekmall.ph（商店页、隐私政策、扩展的反馈页）；问题反馈另可用 GitHub Issues：https://github.com/SamSeekmall/sm-ad-filter/issues 。 | 完成 |
 | 主页网址 | https://samseekmall.github.io/sm-ad-filter/ | 完成 |
 | Chrome 开发者账号 | 用你的 Google 账号在 Chrome Web Store 开发者控制台注册，一次性 5 美元，需要你本人付款和验证。 | 待办 |
 | Edge 合作伙伴中心账号 | 在 Microsoft Partner Center 注册 Edge 扩展开发者，免费，需要你本人完成。 | 待办 |
