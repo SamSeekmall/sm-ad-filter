@@ -57,4 +57,4 @@ Notes for reviewers, if asked:
 
 ## Privacy policy URL
 
-{{PRIVACY_URL}} (the content is `PRIVACY-SM.md` in this repository)
+https://samseekmall.github.io/sm-ad-filter/privacy.html (the content is `PRIVACY-SM.md` in this repository)

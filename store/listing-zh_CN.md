@@ -39,14 +39,14 @@ SM 净览拦截你浏览的网站上的广告和跟踪，并在网页需要帮�
 • 中文和英文界面。
 
 隐私
-SM 净览不收集任何信息，没有统计分析、没有遥测、没有 SeekMall 服务器。你的设置只保存在浏览器里。完整政策：{{PRIVACY_URL}}
+SM 净览不收集任何信息，没有统计分析、没有遥测、没有 SeekMall 服务器。你的设置只保存在浏览器里。完整政策：https://samseekmall.github.io/sm-ad-filter/privacy.html
 
 须知
 • 浏览器内部页面和扩展商店，任何扩展都无法过滤。
 • 部分视频网站把广告和视频一起播放，这类广告不一定能去掉。
 • 请不要同时运行多个广告拦截扩展。
 
-SM 净览是 uBlock Origin Lite（作者 Raymond Hill 及贡献者）的独立修改版，以 GPL-3.0 发布，不是 uBlock Origin 官方产品。源代码：{{SOURCE_URL}}
+SM 净览是 uBlock Origin Lite（作者 Raymond Hill 及贡献者）的独立修改版，以 GPL-3.0 发布，不是 uBlock Origin 官方产品。源代码：https://github.com/SamSeekmall/sm-ad-filter
 
 ## 类别
 

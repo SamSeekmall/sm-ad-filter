@@ -6,18 +6,18 @@
 
 | 事项 | 说明 | 状态 |
 | --- | --- | --- |
-| 源代码公开方式 | GPL-3.0 要求随安装包提供对应源码。二选一：把 `SamSeekmall/sm-ad-filter` 改为公开；或在公开仓库（例如 `seekmall-releases`）发布每个版本的源码包。 | 待定 |
-| 隐私政策网址 | 必须是公开可访问的网页，内容用 `PRIVACY-SM.md`。可以放在公开仓库、GitHub Pages 或 seekmall 网站。 | 待定 |
-| 支持联系方式 | 邮箱或网页，会出现在商店页、隐私政策和扩展的反馈页里。 | 待定 |
-| 主页网址 | 产品介绍页，可以和隐私政策同站。 | 待定 |
+| 源代码公开方式 | 仓库 `SamSeekmall/sm-ad-filter` 已公开（2026-10-23）。 | 完成 |
+| 隐私政策网址 | https://samseekmall.github.io/sm-ad-filter/privacy.html （GitHub Pages，`gh-pages` 分支，由 `store/site/build-site.mjs` 生成）。 | 完成 |
+| 支持联系方式 | 暂用 GitHub Issues：https://github.com/SamSeekmall/sm-ad-filter/issues 。若改用邮箱，改 `sm/release.json` 的 `supportContact` 后重建站点和商店包。另外两家商店的开发者账号本身也需要一个联系邮箱。 | 暂定 |
+| 主页网址 | https://samseekmall.github.io/sm-ad-filter/ | 完成 |
 | Chrome 开发者账号 | 用你的 Google 账号在 Chrome Web Store 开发者控制台注册，一次性 5 美元，需要你本人付款和验证。 | 待办 |
 | Edge 合作伙伴中心账号 | 在 Microsoft Partner Center 注册 Edge 扩展开发者，免费，需要你本人完成。 | 待办 |
 
-以上四个网址和联系方式填进 `sm/release.json` 的 `homepage`、`privacyPolicy`、`source`、`supportContact`，再把文案和政策里的 `{{...}}` 占位符替换掉。
+以上链接已填入 `sm/release.json`，文案里的占位符已替换。
 
 ## 二、生成上传包（我来做）
 
-1. 填好 `sm/release.json` 后提交。
+1. （已完成）`sm/release.json` 已填好。注意：商店包与 0.4.8 安装包不同（作者、链接、内部文档），提交商店前要把它当作新版本（0.4.9）走一遍完整门禁。
 2. 干净 LF 克隆中运行 `node sm/build.mjs --store`，生成 `build/sm-ad-filter-store`（不含内部测试与发布笔记，只带隐私政策）。
 3. 对商店包跑同样的门禁：浏览器测试（Chromium、Edge）、原生弹窗、英文界面检查、`verify`。
 4. 把 `build/sm-ad-filter-store` 的内容打成 zip（`manifest.json` 在 zip 根目录）。
@@ -43,7 +43,7 @@
 1. Partner Center → Edge → 新建扩展 → 上传同一个 zip。
 2. **属性**：类别"效率"；隐私政策网址；网站；支持联系方式。
 3. **商店列表**：英语和中文（简体）各一份；徽标用 `assets/logo-300.png`；截图同上（1280×800）；小宣传图 440×280、大宣传图 1400×560 可选。
-4. **提交说明（给审核员）**：可写"Based on uBlock Origin Lite (GPL-3.0); no remote code; permissions as described in the listing; source: {{SOURCE_URL}}"。
+4. **提交说明（给审核员）**：可写"Based on uBlock Origin Lite (GPL-3.0); no remote code; permissions as described in the listing; source: https://github.com/SamSeekmall/sm-ad-filter"。
 
 ## 五、Firefox 附加组件（以后再做）
 

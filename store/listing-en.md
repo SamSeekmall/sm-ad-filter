@@ -39,14 +39,14 @@ MORE
 • English and Chinese interface.
 
 PRIVACY
-SM Clean View collects nothing. There are no analytics, no telemetry and no SeekMall servers. Your settings stay in your browser. Full policy: {{PRIVACY_URL}}
+SM Clean View collects nothing. There are no analytics, no telemetry and no SeekMall servers. Your settings stay in your browser. Full policy: https://samseekmall.github.io/sm-ad-filter/privacy.html
 
 GOOD TO KNOW
 • Browser pages and extension stores can't be filtered by any extension.
 • Some video sites deliver ads inside the video stream; those can't always be removed.
 • Please don't run several ad-blocking extensions at once.
 
-SM Clean View is an independent modified version of uBlock Origin Lite by Raymond Hill and contributors, released under GPL-3.0. It is not an official uBlock Origin product. Source code: {{SOURCE_URL}}
+SM Clean View is an independent modified version of uBlock Origin Lite by Raymond Hill and contributors, released under GPL-3.0. It is not an official uBlock Origin product. Source code: https://github.com/SamSeekmall/sm-ad-filter
 
 ## Category
 
@@ -59,6 +59,6 @@ Block ads and trackers on web pages, with per-site controls to pause or adjust t
 
 ## Support
 
-- Support contact: {{SUPPORT_CONTACT}}
-- Homepage: {{HOMEPAGE_URL}}
-- Privacy policy: {{PRIVACY_URL}}
+- Support contact: https://github.com/SamSeekmall/sm-ad-filter/issues
+- Homepage: https://samseekmall.github.io/sm-ad-filter/
+- Privacy policy: https://samseekmall.github.io/sm-ad-filter/privacy.html
