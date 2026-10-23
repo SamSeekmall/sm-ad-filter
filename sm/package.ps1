@@ -3,7 +3,7 @@ param(
     # Packaging with a performance gate that is not MET needs a written reason; it is recorded in the receipt.
     [string]$PerformanceWaiver = '',
     # Recorded in the receipt so the rollback target is explicit.
-    [string]$PreviousVersion = '0.4.7 / d632c6f'
+    [string]$PreviousVersion = '0.4.8 / 423cb18'
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot

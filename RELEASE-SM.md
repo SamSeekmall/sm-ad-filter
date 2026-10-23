@@ -1,3 +1,14 @@
+# 0.4.9 商店版准备
+
+- 第一个可上传 Chrome 应用商店和 Edge 加载项的版本。商店包用 `node sm/build.mjs --store` 生成：只带隐私政策，不含内部测试与发布笔记；构建要求 `sm/release.json` 填好发布者、主页、隐私政策、源码和支持联系方式，缺一项就拒绝构建。
+- 扩展作者改为 SeekMall，并设置主页（https://samseekmall.github.io/sm-ad-filter/）。完整设置页"关于"里的隐私政策、文档、更新日志改为指向 SM 自己的页面和源码仓库，上游作者署名与致谢保留，并注明"SeekMall 修改版（GPL-3.0）"。
+- 隐私政策重写为中英双语正式版，逐项说明权限用途和本机保存的数据；线上地址 https://samseekmall.github.io/sm-ad-filter/privacy.html 。支持邮箱 sam@seekmall.ph，问题反馈也可用 GitHub Issues。
+- 完整设置页里 SM 加入的中文文字（备份入口说明）随界面语言显示英文。
+- 源码仓库 https://github.com/SamSeekmall/sm-ad-filter 已公开。
+- 打包脚本在 Windows PowerShell 5.1 下的三处修正（UTF-8 读取、校验值计算、标准 zip 路径），见 QA-SM.md。
+
+回退：保留 0.4.8 安装包（`outputs/sm-ad-filter-0.4.8`）及其 SHA-256；0.4.9 没有新增本机存储键。商店版与本地加载版扩展 ID 不同，从本地版迁到商店版请在控制中心导出配置再导入。
+
 # 0.4.8 主机名校验修正
 
 - 修正：站点输入里带空格等非法字符的地址（例如“not a host”），Chrome 会把它解析成 `not%20a%20host` 而不报错，之前会原样发给引擎；现在统一拒绝并提示“网站地址无效”。其他功能与 0.4.7 相同。
