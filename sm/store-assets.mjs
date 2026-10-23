@@ -79,7 +79,10 @@ async function captureUi(lang) {
             for (let i = 0; i < 150; i++) { if (await evalIn("document.documentElement.dataset.ready==='true'")) break; await sleep(100); }
             if (prepare) await prepare(evalIn);
             await sleep(400);
-            const { data } = await call('Page.captureScreenshot', { format: 'png' });
+            // A headless popup window can be shorter than its content: capture the whole document, not the window.
+            const size = await evalIn('JSON.stringify({w:document.documentElement.scrollWidth,h:document.documentElement.scrollHeight})');
+            const { w, h } = JSON.parse(size);
+            const { data } = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: w, height: h, scale: 1 } });
             cdp.off('Target.receivedMessageFromTarget', listener);
             await cdp.send('Target.closeTarget', { targetId: target.targetId }).catch(() => {});
             await sleep(300);
@@ -96,11 +99,13 @@ async function captureUi(lang) {
         await page.goto(`chrome-extension://${id}/welcome.html?site=shop.example.com`);
         await page.locator('#siteStatus').filter({ hasText: 'shop.example.com' }).waitFor({ timeout: 60000 });
         await sleep(500);
+        await page.evaluate(() => scrollTo(0, 0));
         shots.site = await page.screenshot();
         for (const [name, hash] of [['rules', 'rules'], ['history', 'migration']]) {
             await page.goto(`chrome-extension://${id}/welcome.html#${hash}`);
             await page.waitForFunction(() => /默认：|Default:/.test(document.querySelector('#status')?.textContent || ''), null, { timeout: 60000 });
             await sleep(700);
+            await page.evaluate(() => scrollTo(0, 0));
             shots[name] = await page.screenshot();
         }
     } finally { await context.close(); }

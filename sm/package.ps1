@@ -10,7 +10,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $repoRoot
 try {
     if (git status --porcelain) { throw 'Commit source and QA records before packaging.' }
-    $version = Get-Content sm/release.json -Raw | ConvertFrom-Json
+    $version = Get-Content sm/release.json -Raw -Encoding UTF8 | ConvertFrom-Json
     $commit = (git rev-parse HEAD).Trim()
     foreach ($test in @('worker','updates','welcome','perf-stats')) {
         node --test "sm/$test.test.mjs"
@@ -25,13 +25,13 @@ try {
     node sm/verify.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Verification failed' }
     foreach ($qaPath in @('build/qa-v2/browser-test.json','build/qa-v2-msedge/browser-test.json')) {
-        $qaReport = Get-Content $qaPath -Raw | ConvertFrom-Json
+        $qaReport = Get-Content $qaPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($qaReport.status -ne 'PASS' -or $qaReport.buildMetadata.localCommit -ne $commit) { throw "Missing passing browser verification for this commit: $qaPath" }
     }
-    $performance = Get-Content build/qa-v3-performance/measurements.json -Raw | ConvertFrom-Json
+    $performance = Get-Content build/qa-v3-performance/measurements.json -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($performance.status -ne 'COMPLETE' -or $performance.build.localCommit -ne $commit) { throw 'Missing performance verification for this commit.' }
     foreach ($channel in @('chromium','msedge')) {
-        $native = Get-Content "build/qa-native-$channel/native-popup.json" -Raw | ConvertFrom-Json
+        $native = Get-Content "build/qa-native-$channel/native-popup.json" -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($native.status -ne 'PASS' -or $native.build.localCommit -ne $commit) { throw "Missing native popup verification: $channel" }
     }
     # Popup latency: COMPLETE only means the harness finished. The gate needs enough samples, no failures, and limits met.
@@ -48,7 +48,9 @@ try {
     $output = (Resolve-Path -LiteralPath $OutputDirectory).Path
     $extensionZip = Join-Path $output "sm-ad-filter-$($version.productVersion)-chromium.zip"
     $sourceZip = Join-Path $output "sm-ad-filter-source-$($commit.Substring(0,7)).zip"
-    Compress-Archive -Path build/sm-ad-filter/* -DestinationPath $extensionZip
+    # Windows PowerShell 5.1 Compress-Archive writes backslash entry names, which stores and non-Windows tools reject; bsdtar writes standard zip paths.
+    Push-Location build/sm-ad-filter
+    try { & (Join-Path $env:SystemRoot 'System32/tar.exe') -a -c -f $extensionZip @(Get-ChildItem -Name); if ($LASTEXITCODE -ne 0) { throw "zip failed" } } finally { Pop-Location }
     git archive --format=zip --output=$sourceZip HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
     Copy-Item PERFORMANCE-REVIEW-042.md,design-qa.md,sm/site-catalog.json,SUPPORT-SM.md,PILOT-PLAN-SM.md,IMPLEMENTATION-MATRIX-043.md,README-SM.md,QA-SM.md,PRIVACY-SM.md,RELEASE-SM.md,FEATURES-SM.md -Destination $output
@@ -65,7 +67,7 @@ try {
     foreach ($channel in @('chromium','msedge')) { Copy-Item "build/qa-popup-performance-$channel/native-timing.json" -Destination (Join-Path $output "popup-timing-$channel.json") }
     Copy-Item $gateReceipt -Destination (Join-Path $output 'performance-gate.json')
     Copy-Item build/sm-ad-filter/SM-FILES.json -Destination (Join-Path $output 'SM-FILES.json')
-    $hashes = @($extensionZip,$sourceZip) | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path
-    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion=$PreviousVersion;hashes=$hashes;performanceGate=$performanceGate;toolchain=(Get-Content build/sm-ad-filter/SM-BUILD.json -Raw | ConvertFrom-Json).toolchain;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
+    $hashes = Get-FileHash -LiteralPath $extensionZip,$sourceZip -Algorithm SHA256 | Select-Object Hash,Path
+    @{productVersion=$version.productVersion;extensionVersion=$version.extensionVersion;commit=$commit;engine=$version.engineVersion;upstreamCommit=$version.upstreamCommit;target='Chrome / Edge local unpacked extension';previousVersion=$PreviousVersion;hashes=$hashes;performanceGate=$performanceGate;toolchain=(Get-Content build/sm-ad-filter/SM-BUILD.json -Raw -Encoding UTF8 | ConvertFrom-Json).toolchain;storePublished=$false} | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'RELEASE-RECEIPT.json') -Encoding utf8
     Get-ChildItem -LiteralPath $output | Select-Object Name,Length
 } finally { Pop-Location }
