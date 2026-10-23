@@ -117,6 +117,10 @@ async function refresh() {
     $('#sendHint').textContent=`复制报告后发给${current.release.supportContact||'向你提供本扩展的人'}。${repo?'有 GitHub 账号也可以直接在 GitHub 提交。':''}`;
     $('#releases').hidden=!repo; if(repo) $('#releases').href=`${repo}/releases`;
     if(current.release.source){$('#sourceLink').href=current.release.source;$('#sourceLink').textContent='源码';}
+    // Business contact and optional sponsor page come from sm/release.json; an empty value hides the link.
+    const contact=current.release.supportContact||'';$('#businessLink').hidden=!contact;
+    if(contact)$('#businessLink').href=/@/.test(contact)&&!/^https?:/.test(contact)?`mailto:${contact}?subject=${encodeURIComponent('SM 净览 企业服务 / SM Clean View for organisations')}`:contact;
+    $('#sponsorLink').hidden=!current.release.sponsorUrl;if(current.release.sponsorUrl)$('#sponsorLink').href=current.release.sponsorUrl;
     if(current.release.privacyPolicy)document.querySelector('footer a[href="PRIVACY-SM.md"]')?.setAttribute('href',current.release.privacyPolicy);
     await showChips();
     const history = await send('sm:history'); historyCount=history.length;

@@ -55,11 +55,23 @@ const features = {
         ['减少骚扰', '可选过滤浮层、通知请求和社交挂件，可自动点击 OneTrust、Cookiebot 弹窗的"拒绝全部"。'],
         ['不收集任何信息', '没有统计、没有遥测、没有 SeekMall 服务器，设置只保存在你的浏览器里。']],
 };
+// Business offer: deployment help and support built on the extension's existing enterprise policy support
+// (managed storage: default mode, rule groups, sites never filtered, hidden UI features). No prices on the page.
+const business = {
+    en: ['For organisations', 'SM Clean View can be deployed to company computers through Chrome and Edge enterprise policy, with a preset default filtering mode, chosen rule groups, internal sites that are never filtered, and selected interface features turned off. SeekMall offers help with rollout, custom rule sets and priority support.', 'Contact us'],
+    zh: ['企业与机构', 'SM 净览可以通过 Chrome、Edge 的企业策略统一部署到公司电脑：预设默认过滤模式、选定规则组、指定永不过滤的内部网站、关闭部分界面功能。SeekMall 提供部署协助、定制规则和优先支持。', '联系我们'],
+};
+const sponsor = {
+    en: ['Support the project', 'SM Clean View is free and collects nothing. If it helps you, you can support its development.', 'Sponsor'],
+    zh: ['支持这个项目', 'SM 净览免费且不收集任何信息。如果它对你有帮助，欢迎支持后续开发。', '赞助'],
+};
+const extras = lang => `<h2>${business[lang][0]}</h2><div class="card"><p>${business[lang][1]}</p><p style="margin-top:12px"><a class="btn" href="mailto:${release.supportContact}?subject=SM%20Clean%20View%20for%20organisations">${business[lang][2]}</a></p></div>` +
+    (release.sponsorUrl ? `<h2>${sponsor[lang][0]}</h2><div class="card"><p>${sponsor[lang][1]}</p><p style="margin-top:12px"><a class="btn alt" href="${release.sponsorUrl}">${sponsor[lang][2]}</a></p></div>` : '');
 const section = (lang, h1, lead, featuresTitle, shotsTitle, installTitle, install) => `<section id="${lang}" lang="${lang === 'zh' ? 'zh-CN' : 'en'}"><div class="hero"><h1>${h1}</h1><p>${lead}</p>
 <a class="btn" href="${release.source}/releases">${lang === 'zh' ? '下载最新版本' : 'Download the latest release'}</a><a class="btn alt" href="privacy.html${lang === 'zh' ? '#zh' : '#en'}">${lang === 'zh' ? '隐私政策' : 'Privacy policy'}</a></div>
 <h2>${featuresTitle}</h2><div class="grid">${features[lang].map(([t, d]) => `<div class="card"><h3>${t}</h3><p>${d}</p></div>`).join('')}</div>
 <h2>${shotsTitle}</h2><div class="shots">${[1, 2, 3, 4, 5].map(i => `<img loading="lazy" src="img/screenshot-${i}-${lang}.png" alt="">`).join('')}</div>
-<h2>${installTitle}</h2>${install}</section>`;
+<h2>${installTitle}</h2>${install}${extras(lang)}</section>`;
 const index = head('SM Clean View · SM 净览', 'Block ads and trackers, pause any site in one tap, and undo any setting change. Based on uBlock Origin Lite.') + `<main>
 ${section('en', 'Block ads and trackers. Pause any site in one tap.', 'SM Clean View is a light ad and tracker blocker for Chrome and Edge, based on uBlock Origin Lite, with simple controls for when a page needs a hand.', 'Features', 'Screenshots', 'Install',
     `<p>Store listings for Chrome and Edge are being prepared. Until then: download the latest <code>sm-ad-filter-…-chromium.zip</code> from <a href="${release.source}/releases">Releases</a>, unzip it to a folder that is not synced (not OneDrive), open <code>chrome://extensions</code> or <code>edge://extensions</code>, turn on Developer mode, and choose "Load unpacked".</p><p class="note">Browser pages and extension stores can't be filtered by any extension. Some video sites deliver ads inside the video stream; those can't always be removed.</p>`)}
