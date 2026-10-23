@@ -4,10 +4,10 @@
   "engineVersion": "2026.1012.1545",
   "upstreamCommit": "009467dd2299791ebb2267b2cc99c1114a4b00f4",
   "publisher": "SeekMall",
-  "homepage": "",
-  "privacyPolicy": "",
-  "source": "",
-  "repository": "",
-  "supportContact": "",
+  "homepage": "https://samseekmall.github.io/sm-ad-filter/",
+  "privacyPolicy": "https://samseekmall.github.io/sm-ad-filter/privacy.html",
+  "source": "https://github.com/SamSeekmall/sm-ad-filter",
+  "repository": "https://github.com/SamSeekmall/sm-ad-filter",
+  "supportContact": "https://github.com/SamSeekmall/sm-ad-filter/issues",
   "channel": "local-trial"
 }

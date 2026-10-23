@@ -89,4 +89,4 @@ node sm/determinism.mjs
 
 GPL-3.0；保留 Raymond Hill 及贡献者版权、LICENSE.txt 和规则来源。源码包包含完整对应代码与 SM 构建脚本；对外分发安装包时同时提供对应源码。SM-BUILD.json 标注引擎及提交。
 
-尚未推送自有 GitHub 仓库或上架扩展商店。sunny 的仓库询问发送失败，不能视为已送达或已获答复。
+源码仓库：https://github.com/SamSeekmall/sm-ad-filter。尚未上架扩展商店，上架材料见 `store/`。

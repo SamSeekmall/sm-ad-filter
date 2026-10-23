@@ -82,7 +82,7 @@
 
 | 建议 | 状态 | 说明 |
 |---|---|---|
-| 自有仓库 | **外部依赖** | repository 为空。此前询问 sunny，未取得有效答复。没有虚构地址，没有推送。 |
+| 自有仓库 | 已完成（2026-10-23） | https://github.com/SamSeekmall/sm-ad-filter（公开）。 |
 | 发布记录含 commit/目标/产物/验证/上一版本 | 已实现 | RELEASE-RECEIPT.json（本次由 Python 脚本生成并校验，package.ps1 已更新但**未在 Windows 运行**）。 |
 | 反馈、支持、修复关联流程 | 材料已备；渠道**外部依赖** | SUPPORT-SM.md。没有仓库就没有公开工单入口，也没有响应时限。 |
 | 文档统一、版本残留 | 已实现 | README / RELEASE / QA / FEATURES / PRIVACY 更新到 0.4.3。 |
