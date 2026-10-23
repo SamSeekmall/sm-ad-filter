@@ -100,3 +100,11 @@ Chromium 另有一次紧接 Edge 套件之后、空闲内存约 2 GB 时的运�
 此前一次在机器 CPU 满载时的采样出现超时、门禁 NOT_MET，不符合测量规程，不作依据。
 
 打包脚本修正（Windows PowerShell 5.1）：JSON 读取指定 UTF-8（否则中文被当作 GBK 读坏）；`Get-FileHash` 改用 `-LiteralPath`；安装包 zip 改用系统 bsdtar（`Compress-Archive` 会写入反斜杠路径，商店和非 Windows 工具可能无法识别）。0.4.8 用修正后的脚本副本在 `423cb18` 上运行。
+
+## 0.4.9 发布验收（2026-10-23）
+
+提交 `4f054b2`。安装包与商店包（`--store`）分别在 Chromium 156、Edge 155 上通过浏览器测试各 14 项、原生弹窗测试和英文界面检查；安装包另通过界面性能测量、单元测试 40/40、`verify`、可重复构建。
+
+弹窗延迟门禁：**豁免**。测试机在整个采样窗口持续繁忙（CPU 46–100%，空闲内存 1–2 GB），按测量规程不能采样。理由已写进 `RELEASE-RECEIPT.json`：0.4.8 到 0.4.9 没有改动 `popup.js`、`popup.html`、`worker.mjs`，`i18n.js` 只增加几条翻译词条，而 0.4.8（`423cb18`）已在空闲机器上两浏览器均 MET（交付目录附 `performance-gate-0.4.8-reference.json`）。
+
+发布：GitHub Release `v0.4.9`（安装包、商店包、源码包、SHA256SUMS），下载后校验通过。

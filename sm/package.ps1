@@ -38,6 +38,8 @@ try {
     $gateReceipt = Join-Path ([System.IO.Path]::GetTempPath()) ("sm-perf-gate-" + [guid]::NewGuid().ToString('N') + '.json')
     node sm/perf-gate.mjs build/qa-popup-performance-chromium/native-timing.json build/qa-popup-performance-msedge/native-timing.json --commit $commit --out $gateReceipt
     $gateExit = $LASTEXITCODE
+    # No timing report for this commit: the gate cannot run, so record that instead of a verdict.
+    if (-not (Test-Path $gateReceipt)) { @{ overall = 'NO_REPORT'; note = 'No popup timing report for this commit' } | ConvertTo-Json | Set-Content -Encoding UTF8 $gateReceipt }
     $performanceGate = 'MET'
     if ($gateExit -ne 0) {
         if ([string]::IsNullOrWhiteSpace($PerformanceWaiver)) { throw 'Popup performance gate is not MET (see output above). Fix it, collect more samples, or pass -PerformanceWaiver with a reason.' }
@@ -64,7 +66,8 @@ try {
         Copy-Item "build/qa-native-$channel/native-popup.json" -Destination (Join-Path $output "native-popup-$channel.json")
         Copy-Item "build/qa-native-$channel/native-popup.png" -Destination (Join-Path $output "native-popup-$channel.png")
     }
-    foreach ($channel in @('chromium','msedge')) { Copy-Item "build/qa-popup-performance-$channel/native-timing.json" -Destination (Join-Path $output "popup-timing-$channel.json") }
+    # A waived gate may have no timing report for this commit.
+    foreach ($channel in @('chromium','msedge')) { $timing = "build/qa-popup-performance-$channel/native-timing.json"; if (Test-Path $timing) { Copy-Item $timing -Destination (Join-Path $output "popup-timing-$channel.json") } }
     Copy-Item $gateReceipt -Destination (Join-Path $output 'performance-gate.json')
     Copy-Item build/sm-ad-filter/SM-FILES.json -Destination (Join-Path $output 'SM-FILES.json')
     $hashes = Get-FileHash -LiteralPath $extensionZip,$sourceZip -Algorithm SHA256 | Select-Object Hash,Path

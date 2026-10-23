@@ -15,7 +15,9 @@
 
 以上链接已填入 `sm/release.json`，文案里的占位符已替换。
 
-## 二、生成上传包（我来做）
+## 二、上传包
+
+**0.4.9 已就绪**：`sm-ad-filter-0.4.9-store.zip`，在 https://github.com/SamSeekmall/sm-ad-filter/releases/tag/v0.4.9 和 `outputs/sm-ad-filter-0.4.9/`。下面是以后每个版本的步骤。
 
 1. （已完成）`sm/release.json` 已填好。注意：商店包与 0.4.8 安装包不同（作者、链接、内部文档），提交商店前要把它当作新版本（0.4.9）走一遍完整门禁。
 2. 干净 LF 克隆中运行 `node sm/build.mjs --store`，生成 `build/sm-ad-filter-store`（不含内部测试与发布笔记，只带隐私政策）。
