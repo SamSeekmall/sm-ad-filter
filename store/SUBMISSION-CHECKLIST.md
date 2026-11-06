@@ -8,9 +8,10 @@
 | --- | --- | --- |
 | 源代码公开方式 | 仓库 `SamSeekmall/sm-ad-filter` 已公开（2026-10-23）。 | 完成 |
 | 隐私政策网址 | https://samseekmall.github.io/sm-ad-filter/privacy.html （GitHub Pages，`gh-pages` 分支，由 `store/site/build-site.mjs` 生成）。 | 完成 |
-| 支持联系方式 | 邮箱 sam@seekmall.ph（商店页、隐私政策、扩展的反馈页）；问题反馈另可用 GitHub Issues：https://github.com/SamSeekmall/sm-ad-filter/issues 。 | 完成 |
+| 支持联系方式 | 邮箱 support@seekmall.ph（Google 群组，转发到 sam@；商店页、隐私政策、网站已改；扩展的反馈页从 0.4.9 之后的下一版起生效，0.4.9 包内仍是 sam@）；问题反馈另可用 GitHub Issues：https://github.com/SamSeekmall/sm-ad-filter/issues 。 | 完成 |
 | 主页网址 | https://samseekmall.github.io/sm-ad-filter/ | 完成 |
-| Chrome 开发者账号 | 用你的 Google 账号在 Chrome Web Store 开发者控制台注册，一次性 5 美元，需要你本人付款和验证。 | 待办 |
+| Chrome 开发者账号 | sam@seekmall.ph 已注册（发布者 seekmall，已开两步验证，联系邮箱 support@seekmall.ph）。交易者验证未通过，暂按非交易者申报，以后可改回交易者重新验证。 | 完成 |
+| Chrome 商店提交 | 0.4.9 商店包（sha256 fdfdab0e…）2026-11-06 已提交审核，填写内容见 `CWS-FILL-SHEET.md`。 | 审核中 |
 | Edge 合作伙伴中心账号 | 在 Microsoft Partner Center 注册 Edge 扩展开发者，免费，需要你本人完成。 | 待办 |
 
 以上链接已填入 `sm/release.json`，文案里的占位符已替换。

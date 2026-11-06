@@ -1,3 +1,7 @@
+# 未发布
+
+- 支持邮箱改为 support@seekmall.ph（Google 群组，转发到 sam@seekmall.ph）。网站和隐私政策页已随 gh-pages 更新；扩展内反馈页、隐私政策副本在下一个版本生效。
+
 # 0.4.9 商店版准备
 
 - 第一个可上传 Chrome 应用商店和 Edge 加载项的版本。商店包用 `node sm/build.mjs --store` 生成：只带隐私政策，不含内部测试与发布笔记；构建要求 `sm/release.json` 填好发布者、主页、隐私政策、源码和支持联系方式，缺一项就拒绝构建。
